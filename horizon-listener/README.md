@@ -40,11 +40,52 @@ fill in the `horizon-listener` variables before running the service:
 | `WEBHOOK_URL` | Endpoint that receives POSTed contract events |
 | `POLL_INTERVAL_MS` | Polling interval in milliseconds (default `5000`) |
 | `MAX_RETRIES` | Consecutive failures before the listener gives up (default `10`) |
-| `START_LEDGER` | Starting ledger for the very first cursor-less event query |
+| `START_LEDGER` | Starting ledger for the very first cursor-less event query (required; must be within the RPC node's retention window) |
 
 See the comments in `.env.example` for allowed values and testnet guidance.
 
-## Quick example
+## Quick start: `createWebhookForwarder`
+
+For the common case — forward every contract event to a webhook — use the
+`createWebhookForwarder` factory, which wires `RpcEventSource`,
+`HttpWebhookSender`, and `HorizonListener` together in one call:
+
+```ts
+import { Networks } from '@stellar/stellar-sdk';
+import { createWebhookForwarder } from 'horizon-listener';
+
+const listener = createWebhookForwarder({
+  eventSource: {
+    rpcUrl: 'https://soroban-testnet.stellar.org',
+    networkPassphrase: Networks.TESTNET,
+    contractIds: [process.env.DENYLIST_GATE_CONTRACT_ID!, process.env.ALLOWLIST_TOKEN_CONTRACT_ID!],
+    // Required for the first cursor-less query: a recent ledger within the
+    // RPC node's event retention window.
+    startLedger: Number(process.env.START_LEDGER),
+  },
+  webhook: {
+    url: 'http://localhost:4000/webhook',
+    signingSecret: process.env.WEBHOOK_SIGNING_SECRET,
+  },
+  listenerOptions: {
+    pollIntervalMs: 5000,
+  },
+});
+
+listener.start().catch((err) => {
+  console.error('horizon-listener gave up after repeated failures', err);
+  process.exit(1);
+});
+```
+
+`listenerOptions` accepts every `HorizonListenerOptions` field except
+`eventSource` and `onEvent` (e.g. `mode`, `maxRetries`, `logger`,
+`onEventFailure`, `metrics`, `tracer`).
+
+## Manual wiring
+
+If you need more control (a custom `EventSource`, extra processing in
+`onEvent`, multiple sinks), wire the pieces together yourself:
 
 ```ts
 import { Networks } from '@stellar/stellar-sdk';
@@ -54,6 +95,7 @@ const eventSource = new RpcEventSource({
   rpcUrl: 'https://soroban-testnet.stellar.org',
   networkPassphrase: Networks.TESTNET,
   contractIds: [process.env.DENYLIST_GATE_CONTRACT_ID!, process.env.ALLOWLIST_TOKEN_CONTRACT_ID!],
+  startLedger: Number(process.env.START_LEDGER),
 });
 
 const webhook = new HttpWebhookSender({
@@ -112,6 +154,50 @@ const listener = new HorizonListener({
   pollIntervalMs: 5000, // sleep duration during quiet periods
 });
 ```
+
+`pollIntervalMs` is not hard-limited, but values below 250ms log a warning at
+construction time: polling a remote RPC that aggressively is usually a typo
+(e.g. `50` instead of `5000`) and risks being throttled by the provider. Very
+low intervals remain allowed for local low-latency testing.
+
+## Backfill mode (`startLedger`)
+
+Two different `startLedger` options exist:
+
+- `RpcEventSourceOptions.startLedger` tells Soroban RPC where the very first
+  cursor-less `getEvents` query begins. It is **required**: real RPC nodes only
+  retain events for a limited recent window (commonly ~24h / 17,280 ledgers),
+  so there is no safe default. If it is omitted, the first cursor-less call
+  throws a descriptive `horizon-listener` error instead of sending ledger `0`.
+- `HorizonListenerOptions.startLedger` switches the listener into **backfill
+  mode** on startup, for catching up after downtime.
+
+In backfill mode the listener pages through historical events as fast as the
+RPC returns them:
+
+1. Each page is processed (every event goes through `onEvent`) and the cursor
+   advances.
+2. If the page contained events, the next page is fetched **immediately** —
+   the listener does **not** sleep `pollIntervalMs` between backfill pages.
+3. The first page that returns **zero events** ends backfill. The listener logs
+   `backfill complete, switching to live polling` and from then on behaves
+   according to `mode`.
+
+`getStatus().backfilling` reports whether the listener is still catching up.
+
+Interaction with `mode`:
+
+- **`poll`** — after backfill, the listener sleeps `pollIntervalMs` after
+  every poll, as usual.
+- **`stream`** — during backfill the behaviour is identical (page immediately
+  while events are returned). After backfill, `stream` keeps fetching
+  immediately whenever a poll returns events and only sleeps during quiet
+  periods, so the transition is effectively seamless.
+
+During catch-up, expect a burst of back-to-back RPC calls proportional to the
+number of historical pages; size `startLedger` (and your RPC provider's rate
+limits) accordingly. Poll failures during backfill use the same exponential
+backoff and `maxRetries` handling described below.
 
 ## Webhook signature verification
 

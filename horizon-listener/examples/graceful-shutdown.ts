@@ -10,6 +10,7 @@ const listener = createWebhookForwarder({
     rpcUrl: 'https://soroban-testnet.stellar.org',
     networkPassphrase: Networks.TESTNET_PASSPHRASE,
     contractIds: [process.env.DENYLIST_GATE_CONTRACT_ID!, process.env.ALLOWLIST_TOKEN_CONTRACT_ID!],
+    startLedger: Number(process.env.START_LEDGER),
   },
   webhook: {
     url: process.env.WEBHOOK_URL || 'http://localhost:4000/webhook',
