@@ -17,6 +17,8 @@ export interface HorizonListenerOptions {
   eventSource: EventSource;
   onEvent: (event: RawContractEvent) => Promise<void> | void;
   onEventFailure?: (event: RawContractEvent, error: unknown) => void | Promise<void>;
+  /** Retry failed event handlers. `maxRetries` is the maximum number of attempts. */
+  eventRetry?: { maxRetries?: number; jitter?: boolean; baseMs?: number; maxMs?: number };
   pollIntervalMs?: number;
   /**
    * Maximum number of consecutive polling failures before giving up.
@@ -91,6 +93,7 @@ export class HorizonListener {
   private readonly eventSource: EventSource;
   private readonly onEvent: (event: RawContractEvent) => Promise<void> | void;
   private readonly onEventFailure?: (event: RawContractEvent, error: unknown) => void | Promise<void>;
+  private readonly eventRetry?: HorizonListenerOptions['eventRetry'];
   private readonly pollIntervalMs: number;
   private readonly maxRetries: number;
   private readonly logger: Logger;
@@ -110,6 +113,7 @@ export class HorizonListener {
     this.eventSource = options.eventSource;
     this.onEvent = options.onEvent;
     this.onEventFailure = options.onEventFailure;
+    this.eventRetry = options.eventRetry;
     this.pollIntervalMs = options.pollIntervalMs ?? 5000;
     this.maxRetries = options.maxRetries ?? 10;
     this.logger = options.logger ?? consoleLogger;
@@ -202,22 +206,50 @@ export class HorizonListener {
         relaySpan.setAttribute('event.contract_id', event.contractId);
         relaySpan.setAttribute('event.ledger', event.ledger);
 
-        try {
-          this.logger.info('horizon-listener: received contract event', event);
-          await this.onEvent(event);
+        this.logger.info('horizon-listener: received contract event', event);
+        const maxEventAttempts = this.eventRetry
+          ? Math.max(1, this.eventRetry.maxRetries ?? 3)
+          : 1;
+        let eventError: unknown;
+        let eventSucceeded = false;
+
+        for (let eventAttempt = 1; eventAttempt <= maxEventAttempts; eventAttempt += 1) {
+          try {
+            await this.onEvent(event);
+            eventSucceeded = true;
+            break;
+          } catch (err) {
+            eventError = err;
+            if (eventAttempt >= maxEventAttempts) {
+              break;
+            }
+
+            const delayMs = computeBackoffDelayMs(eventAttempt, this.eventRetry);
+            this.logger.warn(
+              `horizon-listener: onEvent failed (attempt ${eventAttempt}/${maxEventAttempts}), retrying in ${delayMs}ms`,
+              err,
+            );
+            await this.sleep(delayMs);
+          }
+        }
+
+        if (eventSucceeded) {
           const relayDuration = Date.now() - relayStart;
           this.metrics.counter.inc('event_relay', 'success');
           this.metrics.histogram.observe('event_relay', relayDuration);
           relaySpan.end('ok');
-        } catch (err) {
+        } else {
           const relayDuration = Date.now() - relayStart;
-          this.logger.error('horizon-listener: onEvent handler threw', err);
+          this.logger.error('horizon-listener: onEvent handler threw', eventError);
           this.metrics.counter.inc('event_relay', 'failure');
           this.metrics.histogram.observe('event_relay', relayDuration);
-          relaySpan.end('error', err instanceof Error ? err : new Error(String(err)));
+          relaySpan.end(
+            'error',
+            eventError instanceof Error ? eventError : new Error(String(eventError)),
+          );
           if (this.onEventFailure) {
             try {
-              await this.onEventFailure(event, err);
+              await this.onEventFailure(event, eventError);
             } catch (failureErr) {
               this.logger.error('horizon-listener: onEventFailure handler threw', failureErr);
             }
