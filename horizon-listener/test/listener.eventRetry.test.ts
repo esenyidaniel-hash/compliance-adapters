@@ -10,7 +10,7 @@
 
 import { HorizonListener } from '../src/listener';
 import type { EventSource, RawContractEvent } from '../src/eventSource';
-import { computeBackoffDelayMs } from '../src/backoff';
+import { computeBackoffDelayMs } from '@compliance-adapters/backoff';
 
 function makeLogger() {
   return { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
