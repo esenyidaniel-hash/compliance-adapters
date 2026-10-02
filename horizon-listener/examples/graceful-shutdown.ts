@@ -8,7 +8,7 @@ import { createWebhookForwarder } from '../src/index';
 const listener = createWebhookForwarder({
   eventSource: {
     rpcUrl: 'https://soroban-testnet.stellar.org',
-    networkPassphrase: Networks.TESTNET_PASSPHRASE,
+    networkPassphrase: Networks.TESTNET,
     contractIds: [process.env.DENYLIST_GATE_CONTRACT_ID!, process.env.ALLOWLIST_TOKEN_CONTRACT_ID!],
   },
   webhook: {

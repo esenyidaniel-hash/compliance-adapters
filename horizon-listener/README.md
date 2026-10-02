@@ -207,10 +207,11 @@ added.
 
 If `eventSource.getEvents(...)` throws (RPC unreachable, rate-limited, cursor
 expired, etc.), `HorizonListener` does not crash: it logs a warning, waits an
-exponentially increasing backoff delay (see `computeBackoffDelayMs` in
-`src/backoff.ts`, capped at 30s by default with jitter), and retries. The
-retry counter resets to zero after any subsequent successful poll. If
-`maxRetries` consecutive failures are exceeded (default 10), `start()`
+exponentially increasing backoff delay (see `computeBackoffDelayMs` in the
+[`@compliance-adapters/backoff`](../backoff/src/index.ts) package, re-exported
+from this package's entry point, capped at 30s by default with jitter), and
+retries. The retry counter resets to zero after any subsequent successful poll.
+If `maxRetries` consecutive failures are exceeded (default 10), `start()`
 rejects so the caller knows the listener gave up — in a real deployment a
 process manager would be responsible for restarting the process.
 

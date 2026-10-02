@@ -17,8 +17,21 @@ export interface WebhookSender {
  * Thrown when the webhook endpoint responds with a non-OK HTTP status.
  * Carries the status code so callers (and the retry loop below) can tell a
  * permanent client error (4xx) apart from a transient server error (5xx).
+ *
+ * @example
+ * ```ts
+ * import { HttpWebhookSender, WebhookHttpError } from 'horizon-listener';
+ *
+ * try {
+ *   await sender.send(event);
+ * } catch (err) {
+ *   if (err instanceof WebhookHttpError) {
+ *     console.error('webhook returned HTTP', err.status);
+ *   }
+ * }
+ * ```
  */
-class WebhookHttpError extends Error {
+export class WebhookHttpError extends Error {
   constructor(
     message: string,
     public readonly status: number,
