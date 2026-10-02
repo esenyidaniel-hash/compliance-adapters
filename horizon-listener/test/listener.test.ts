@@ -1,6 +1,6 @@
 import { HorizonListener } from '../src/listener';
 import type { EventSource, RawContractEvent } from '../src/eventSource';
-import { computeBackoffDelayMs } from '../src/backoff';
+import { computeBackoffDelayMs } from '@compliance-adapters/backoff';
 
 function makeLogger() {
   return { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
@@ -172,7 +172,10 @@ describe('HorizonListener', () => {
   });
 
   it('backfills all historical pages before switching to live polling', async () => {
-    const page1Events = [makeEvent({ id: 'h-1', ledger: 100 }), makeEvent({ id: 'h-2', ledger: 101 })];
+    const page1Events = [
+      makeEvent({ id: 'h-1', ledger: 100 }),
+      makeEvent({ id: 'h-2', ledger: 101 }),
+    ];
     const page2Events = [makeEvent({ id: 'h-3', ledger: 102 })];
     const liveEvent = makeEvent({ id: 'live-1', ledger: 200 });
 
@@ -223,9 +226,7 @@ describe('HorizonListener', () => {
     expect(sleepCalls).toEqual([5000]);
 
     // Verify the backfill-complete log was emitted
-    expect(logger.info).toHaveBeenCalledWith(
-      expect.stringContaining('backfill complete'),
-    );
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('backfill complete'));
   });
 
   it('pages through all historical events without skipping or duplicating at boundaries', async () => {
@@ -265,6 +266,34 @@ describe('HorizonListener', () => {
 
     // Exactly 4 calls: 3 pages with events + 1 empty page to end backfill
     expect(getEvents).toHaveBeenCalledTimes(4);
+  });
+
+  it('stops before fetching another backfill page when stopped during a page', async () => {
+    const firstEvent = makeEvent({ id: 'backfill-1', ledger: 100 });
+    const getEvents = jest
+      .fn()
+      .mockResolvedValueOnce({ events: [firstEvent], nextCursor: 'cursor-next' })
+      .mockResolvedValueOnce({
+        events: [makeEvent({ id: 'should-not-run' })],
+        nextCursor: 'cursor-end',
+      });
+    const received: string[] = [];
+    let listener!: HorizonListener;
+    listener = new HorizonListener({
+      eventSource: { getEvents },
+      startLedger: 100,
+      onEvent: (event) => {
+        received.push(event.id);
+        listener.stop();
+      },
+      sleep: async () => {},
+    });
+
+    await listener.start();
+
+    expect(received).toEqual(['backfill-1']);
+    expect(getEvents).toHaveBeenCalledTimes(1);
+    expect(getEvents).toHaveBeenCalledWith(undefined);
   });
 
   describe('mode: poll (default)', () => {
@@ -489,7 +518,9 @@ describe('HorizonListener', () => {
     };
 
     const event = makeEvent({ id: 'cursor-test' });
-    const getEvents = jest.fn().mockResolvedValueOnce({ events: [event], nextCursor: 'new-cursor' });
+    const getEvents = jest
+      .fn()
+      .mockResolvedValueOnce({ events: [event], nextCursor: 'new-cursor' });
 
     const eventSource: EventSource = { getEvents };
     const onEvent = jest.fn(async () => {
@@ -557,9 +588,7 @@ describe('HorizonListener', () => {
   it('handles onEventFailure callback errors without interrupting the listener', async () => {
     const eventA = makeEvent({ id: 'evt-1' });
 
-    const getEvents = jest
-      .fn()
-      .mockResolvedValueOnce({ events: [eventA], nextCursor: 'cursor-1' });
+    const getEvents = jest.fn().mockResolvedValueOnce({ events: [eventA], nextCursor: 'cursor-1' });
 
     const eventSource: EventSource = { getEvents };
     const eventError = new Error('event failed');

@@ -81,16 +81,23 @@ const defaultSleep = (ms: number, signal?: AbortSignal): Promise<void> =>
       return;
     }
     const timeoutId = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
-      clearTimeout(timeoutId);
-      reject(signal.reason ?? new Error('Sleep aborted'));
-    }, { once: true });
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timeoutId);
+        reject(signal.reason ?? new Error('Sleep aborted'));
+      },
+      { once: true },
+    );
   });
 
 export class HorizonListener {
   private readonly eventSource: EventSource;
   private readonly onEvent: (event: RawContractEvent) => Promise<void> | void;
-  private readonly onEventFailure?: (event: RawContractEvent, error: unknown) => void | Promise<void>;
+  private readonly onEventFailure?: (
+    event: RawContractEvent,
+    error: unknown,
+  ) => void | Promise<void>;
   private readonly pollIntervalMs: number;
   private readonly maxRetries: number;
   private readonly logger: Logger;
@@ -236,6 +243,9 @@ export class HorizonListener {
           this.logger.debug(
             `horizon-listener: backfill page consumed (${response.events.length} events), fetching next page`,
           );
+          if (!this.running) {
+            break;
+          }
           continue;
         }
       }

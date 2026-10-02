@@ -131,6 +131,18 @@ describe('ProviderRegistry', () => {
       expect(detailed.errors).toEqual([{ name: 'internal-denylist', error: 'upstream down' }]);
     });
 
+    it('uses registration order when the remaining providers are unprioritized', async () => {
+      const registry = new ProviderRegistry({ policy: 'priority-override' });
+      registry.register('failed-primary', throwingProvider('upstream down'), { priority: 0 });
+      registry.register('first-unprioritized', fakeProvider(true, 'list-a'));
+      registry.register('second-unprioritized', fakeProvider(false, 'list-b'));
+
+      const detailed = await registry.checkAddressDetailed(ADDRESS);
+
+      expect(detailed.flagged).toBe(true);
+      expect(detailed.source).toBe('first-unprioritized:list-a');
+    });
+
     it('providers registered without a priority sort after prioritized ones', async () => {
       const registry = new ProviderRegistry({ policy: 'priority-override' });
       registry.register('no-priority', fakeProvider(true, 'list-a'));
