@@ -84,8 +84,8 @@ describe('HorizonListener', () => {
 
     const startPromise = listener.start();
 
-    const firstDelay = computeBackoffDelayMs(1, { jitter: false });
-    const secondDelay = computeBackoffDelayMs(2, { jitter: false });
+    const firstDelay = computeBackoffDelayMs(0, { jitter: false });
+    const secondDelay = computeBackoffDelayMs(1, { jitter: false });
 
     await jest.advanceTimersByTimeAsync(firstDelay);
     await jest.advanceTimersByTimeAsync(secondDelay);
@@ -124,9 +124,9 @@ describe('HorizonListener', () => {
     });
 
     // Advance through each backoff delay; the listener will retry after each sleep
-    const firstDelay = computeBackoffDelayMs(1, { jitter: false, baseMs: 100, maxMs: 10000 });
-    const secondDelay = computeBackoffDelayMs(2, { jitter: false, baseMs: 100, maxMs: 10000 });
-    const thirdDelay = computeBackoffDelayMs(3, { jitter: false, baseMs: 100, maxMs: 10000 });
+    const firstDelay = computeBackoffDelayMs(0, { jitter: false, baseMs: 100, maxMs: 10000 });
+    const secondDelay = computeBackoffDelayMs(1, { jitter: false, baseMs: 100, maxMs: 10000 });
+    const thirdDelay = computeBackoffDelayMs(2, { jitter: false, baseMs: 100, maxMs: 10000 });
 
     await jest.advanceTimersByTimeAsync(firstDelay);
     await jest.advanceTimersByTimeAsync(secondDelay);
@@ -161,8 +161,8 @@ describe('HorizonListener', () => {
       // about the rejection being "unhandled" while timers are advancing.
     });
 
-    const firstDelay = computeBackoffDelayMs(1, { jitter: false, baseMs: 10, maxMs: 1000 });
-    const secondDelay = computeBackoffDelayMs(2, { jitter: false, baseMs: 10, maxMs: 1000 });
+    const firstDelay = computeBackoffDelayMs(0, { jitter: false, baseMs: 10, maxMs: 1000 });
+    const secondDelay = computeBackoffDelayMs(1, { jitter: false, baseMs: 10, maxMs: 1000 });
 
     await jest.advanceTimersByTimeAsync(firstDelay);
     await jest.advanceTimersByTimeAsync(secondDelay);

@@ -349,13 +349,21 @@ export async function syncSanctionsToDenylist(options: SyncOptions): Promise<Syn
   const legacyLogger = logger as Logger & { log?: (...args: unknown[]) => void };
   const safeLogger = {
     debug: (...args: unknown[]) =>
-      typeof legacyLogger.debug === 'function' ? legacyLogger.debug(...args) : legacyLogger.log?.(...args),
+      typeof legacyLogger.debug === 'function'
+        ? legacyLogger.debug(...args)
+        : legacyLogger.log?.(...args),
     info: (...args: unknown[]) =>
-      typeof legacyLogger.info === 'function' ? legacyLogger.info(...args) : legacyLogger.log?.(...args),
+      typeof legacyLogger.info === 'function'
+        ? legacyLogger.info(...args)
+        : legacyLogger.log?.(...args),
     warn: (...args: unknown[]) =>
-      typeof legacyLogger.warn === 'function' ? legacyLogger.warn(...args) : legacyLogger.log?.(...args),
+      typeof legacyLogger.warn === 'function'
+        ? legacyLogger.warn(...args)
+        : legacyLogger.log?.(...args),
     error: (...args: unknown[]) =>
-      typeof legacyLogger.error === 'function' ? legacyLogger.error(...args) : legacyLogger.log?.(...args),
+      typeof legacyLogger.error === 'function'
+        ? legacyLogger.error(...args)
+        : legacyLogger.log?.(...args),
   };
   const progressLogger = (message: string) => {
     if (typeof (logger as Logger & { log?: (...args: unknown[]) => void }).log === 'function') {
@@ -413,7 +421,9 @@ export async function syncSanctionsToDenylist(options: SyncOptions): Promise<Syn
   const failedWithReasons: FailedAddress[] = [];
   let checked = 0;
 
-  const getAddressResult = async (address: string): Promise<{ flagged: boolean; source: string }> => {
+  const getAddressResult = async (
+    address: string,
+  ): Promise<{ flagged: boolean; source: string }> => {
     if (cache) {
       return cache.getOrLoad(address, () => withRetry(() => provider.checkAddress(address), retry));
     }
@@ -491,7 +501,7 @@ export async function syncSanctionsToDenylist(options: SyncOptions): Promise<Syn
     concurrency,
   );
 
-safeLogger.info('sanctions-oracle: screening complete', {
+  safeLogger.info('sanctions-oracle: screening complete', {
     checked: addresses.length,
     flagged: flagged.length,
   });
@@ -530,6 +540,7 @@ safeLogger.info('sanctions-oracle: screening complete', {
         metrics.counter.inc('denylist_write', 'success');
         metrics.histogram.observe('denylist_write', durationMs);
         // transaction hash is set after success — it's a stable, non-PII identifier
+        // Issue #598: checkpoint only after the denylist write has succeeded.
         span.setAttribute('denylist_write.tx_hash', result.hash);
         span.end('ok');
         written.push(address);
@@ -715,32 +726,47 @@ export function toSafeLogString(args: CliArgs): string {
 
 export function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = { dryRun: false };
+  const readValue = (flag: string, index: number): string => {
+    const value = argv[index + 1];
+    if (value === undefined || value.startsWith('-')) {
+      throw new Error(`Missing value for ${flag}`);
+    }
+    return value;
+  };
+
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     switch (arg) {
       case '--addresses':
-        args.addressesPath = argv[++i];
+        args.addressesPath = readValue(arg, i);
+        i += 1;
         break;
       case '--dry-run':
         args.dryRun = true;
         break;
       case '--contract-id':
-        args.contractId = argv[++i];
+        args.contractId = readValue(arg, i);
+        i += 1;
         break;
       case '--rpc-url':
-        args.rpcUrl = argv[++i];
+        args.rpcUrl = readValue(arg, i);
+        i += 1;
         break;
       case '--network-passphrase':
-        args.networkPassphrase = argv[++i];
+        args.networkPassphrase = readValue(arg, i);
+        i += 1;
         break;
       case '--secret-key':
-        args.secretKey = argv[++i];
+        args.secretKey = readValue(arg, i);
+        i += 1;
         break;
       case '--csv':
-        args.csvPath = argv[++i];
+        args.csvPath = readValue(arg, i);
+        i += 1;
         break;
       case '--provider-module':
-        args.providerModulePath = argv[++i];
+        args.providerModulePath = readValue(arg, i);
+        i += 1;
         break;
       case '--rate-limit':
         args.rateLimit = true;

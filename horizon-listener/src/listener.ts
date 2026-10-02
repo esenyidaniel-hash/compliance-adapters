@@ -172,7 +172,8 @@ export class HorizonListener {
           );
         }
 
-        const delayMs = computeBackoffDelayMs(this.attempt, this.backoffOptions);
+        // `attempt` is one-based for retry limits, while backoff uses a zero-based exponent.
+        const delayMs = computeBackoffDelayMs(this.attempt - 1, this.backoffOptions);
         this.sleepAbortController = new AbortController();
         try {
           await this.sleep(delayMs, this.sleepAbortController.signal);

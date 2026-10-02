@@ -246,5 +246,7 @@ export class ProviderRegistry implements SanctionsProvider {
 }
 
 function formatSources(outcomes: ProviderCheckOutcome[]): string {
-  return outcomes.map((o) => `${o.name}:${o.source}`).join(', ');
+  // Provider source labels are opaque external data. Encode the value so a
+  // comma or colon from a provider cannot be mistaken for our separators.
+  return outcomes.map((o) => `${o.name}:${encodeURIComponent(o.source)}`).join(', ');
 }

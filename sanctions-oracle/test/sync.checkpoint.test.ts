@@ -36,7 +36,7 @@ describe('InMemoryCheckpointStore', () => {
   });
 });
 
-describe('syncSanctionsToDenylist — checkpointing (issue #344)', () => {
+describe('syncSanctionsToDenylist — checkpointing (issue #598)', () => {
   it('marks a clean address complete after its provider check', async () => {
     const provider = new MockSanctionsProvider();
     const writer = makeFakeWriter();

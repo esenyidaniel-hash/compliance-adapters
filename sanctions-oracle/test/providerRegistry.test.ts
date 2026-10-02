@@ -48,6 +48,15 @@ describe('ProviderRegistry', () => {
   });
 
   describe('disagreement: any-flag-wins', () => {
+    it('escapes commas and colons in provider source labels', async () => {
+      const registry = new ProviderRegistry({ policy: 'any-flag-wins' });
+      registry.register('csv-provider', fakeProvider(true, 'OFAC, SDN List:2026'));
+
+      const result = await registry.checkAddress(ADDRESS);
+
+      expect(result.source).toBe('csv-provider:OFAC%2C%20SDN%20List%3A2026');
+    });
+
     it('flags the address if a single provider flags it', async () => {
       const registry = new ProviderRegistry({ policy: 'any-flag-wins' });
       registry.register('clean-a', fakeProvider(false, 'list-a'));
