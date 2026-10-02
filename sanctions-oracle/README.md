@@ -190,7 +190,7 @@ fill in the `sanctions-oracle` variables before running a live sync:
 | `STELLAR_RPC_URL` | `--rpc-url` | Soroban RPC endpoint |
 | `STELLAR_NETWORK_PASSPHRASE` | `--network-passphrase` | Must match the network the RPC endpoint serves |
 | `DENYLIST_GATE_CONTRACT_ID` | `--contract-id` | Deployed `denylist-gate` contract to write flagged addresses into |
-| `SANCTIONS_SOURCE_SECRET` | `--secret-key` | Signing keypair that funds and signs denylist transactions |
+| `SANCTIONS_ORACLE_SECRET_KEY` | `--secret-key` | Signing keypair that funds and signs denylist transactions (preferred over the CLI flag, which is visible in shell history) |
 
 See the comments in `.env.example` for allowed values and testnet guidance.
 

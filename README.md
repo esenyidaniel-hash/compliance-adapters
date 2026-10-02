@@ -188,7 +188,7 @@ The demo starts an Express server on `http://localhost:3001` and exposes:
 - `POST /admin/listener/stop`      — stop Horizon event listener (requires `X-Admin-Token`)
 - `GET  /metrics`                  — Prometheus metrics
 
-You can configure runtime values with environment variables such as `SERVER_SECRET`, `SOROBAN_RPC_URL`, and `DENYLIST_CONTRACT_ID`.
+You can configure runtime values with environment variables such as `SERVER_ACCOUNT_ID`, `RPC_URL`, and `CONTRACT_ID`. See the root [`.env.example`](./.env.example) for the full list of documented variables across all packages.
 
 To try the sanctions sync script against testnet in dry-run mode (no transactions submitted, just
 logs what it would do):

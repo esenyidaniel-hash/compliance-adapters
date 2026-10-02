@@ -41,6 +41,8 @@ fill in the `horizon-listener` variables before running the service:
 | `POLL_INTERVAL_MS` | Polling interval in milliseconds (default `5000`) |
 | `MAX_RETRIES` | Consecutive failures before the listener gives up (default `10`) |
 | `START_LEDGER` | Starting ledger for the very first cursor-less event query |
+| `WEBHOOK_SIGNING_SECRET` | Secret for HMAC-signing outbound webhook requests (optional) |
+| `PORT` | Port for the example Express app (sep10-auth example) |
 
 See the comments in `.env.example` for allowed values and testnet guidance.
 
