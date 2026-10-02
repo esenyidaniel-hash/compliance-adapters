@@ -77,6 +77,24 @@ export class HttpWebhookSender implements WebhookSender {
   private readonly parentContext: TracingContext | undefined;
 
   constructor(options: HttpWebhookSenderOptions) {
+    // Validate URL is syntactically valid and has a protocol (http/https)
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(options.url);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `horizon-listener: HttpWebhookSender invalid URL "${options.url}" (${reason})`,
+      );
+    }
+
+    // Ensure URL has a protocol (http or https) to catch typos like "localhost:3000"
+    if (!parsedUrl.protocol.startsWith('http')) {
+      throw new Error(
+        `horizon-listener: HttpWebhookSender invalid URL "${options.url}" (must start with http:// or https://)`,
+      );
+    }
+
     this.url = options.url;
     this.signingSecret = options.signingSecret;
     // Node 20+ ships a global fetch; fetchImpl is injectable so tests never

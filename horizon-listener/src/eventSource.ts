@@ -92,6 +92,11 @@ export class RpcEventSource implements EventSource {
   private server: rpc.Server | undefined;
 
   constructor(options: RpcEventSourceOptions) {
+    if (options.contractIds.length === 0) {
+      throw new Error(
+        'horizon-listener: RpcEventSource requires at least one contract ID (contractIds array cannot be empty)',
+      );
+    }
     this.options = options;
   }
 

@@ -573,4 +573,55 @@ describe('HttpWebhookSender', () => {
       expect(sentEvent.id).toBe('evt-metrics-trace-test');
     });
   });
+
+  describe('constructor validation', () => {
+    it('throws when URL is malformed (missing protocol)', () => {
+      const fetchImpl = jest.fn();
+      expect(() => {
+        new HttpWebhookSender({ url: 'localhost:9999/webhook', fetchImpl });
+      }).toThrow(/must start with http:\/\/ or https:\/\//);
+    });
+
+    it('throws when URL is empty string', () => {
+      const fetchImpl = jest.fn();
+      expect(() => {
+        new HttpWebhookSender({ url: '', fetchImpl });
+      }).toThrow(/invalid URL/);
+    });
+
+    it('throws when URL contains invalid characters', () => {
+      const fetchImpl = jest.fn();
+      expect(() => {
+        new HttpWebhookSender({ url: 'http://local host/webhook', fetchImpl });
+      }).toThrow(/invalid URL/);
+    });
+
+    it('accepts valid http:// URLs', () => {
+      const fetchImpl = jest.fn();
+      expect(() => {
+        new HttpWebhookSender({ url: 'http://localhost:9999/webhook', fetchImpl });
+      }).not.toThrow();
+    });
+
+    it('accepts valid https:// URLs', () => {
+      const fetchImpl = jest.fn();
+      expect(() => {
+        new HttpWebhookSender({ url: 'https://example.com/webhook', fetchImpl });
+      }).not.toThrow();
+    });
+
+    it('throws with error message indicating the URL parsing failure reason', () => {
+      const fetchImpl = jest.fn();
+      expect(() => {
+        new HttpWebhookSender({ url: 'ht!tp://invalid', fetchImpl });
+      }).toThrow(/invalid URL.*ht!tp:\/\/invalid/);
+    });
+
+    it('throws when URL lacks http/https protocol', () => {
+      const fetchImpl = jest.fn();
+      expect(() => {
+        new HttpWebhookSender({ url: 'ftp://example.com/webhook', fetchImpl });
+      }).toThrow(/must start with http:\/\/ or https:\/\//);
+    });
+  });
 });
