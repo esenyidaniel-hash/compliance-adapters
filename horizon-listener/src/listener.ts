@@ -74,6 +74,10 @@ export interface HorizonListenerOptions {
   tracer?: AnyTracer;
 }
 
+// Below this, polling a remote Soroban RPC is almost certainly a misconfiguration
+// (e.g. `50` typed instead of `5000`) and risks provider rate-limiting.
+export const MIN_RECOMMENDED_POLL_INTERVAL_MS = 250;
+
 const defaultSleep = (ms: number, signal?: AbortSignal): Promise<void> =>
   new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -120,6 +124,13 @@ export class HorizonListener {
     this.pollIntervalMs = options.pollIntervalMs ?? 5000;
     this.maxRetries = options.maxRetries ?? 10;
     this.logger = options.logger ?? consoleLogger;
+    if (this.pollIntervalMs < MIN_RECOMMENDED_POLL_INTERVAL_MS) {
+      this.logger.warn(
+        `horizon-listener: pollIntervalMs is ${this.pollIntervalMs}ms, below the recommended ` +
+          `minimum of ${MIN_RECOMMENDED_POLL_INTERVAL_MS}ms; this may hammer the Soroban RPC ` +
+          'endpoint and get throttled. Ignore this warning for local low-latency testing.',
+      );
+    }
     this.sleep = options.sleep ?? defaultSleep;
     this.backoffOptions = options.backoffOptions ?? {};
     this.backfilling = options.startLedger != null;

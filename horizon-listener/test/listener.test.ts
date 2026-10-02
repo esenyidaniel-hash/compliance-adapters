@@ -675,3 +675,19 @@ describe('HorizonListener', () => {
     await expect(startPromise).resolves.toBeUndefined();
   });
 });
+
+describe('HorizonListener pollIntervalMs floor', () => {
+  const eventSource: EventSource = { getEvents: async () => ({ events: [], nextCursor: '' }) };
+
+  it('warns when pollIntervalMs is below the recommended minimum', () => {
+    const logger = makeLogger();
+    new HorizonListener({ eventSource, onEvent: () => {}, pollIntervalMs: 50, logger });
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('below the recommended minimum'));
+  });
+
+  it('does not warn for the default interval', () => {
+    const logger = makeLogger();
+    new HorizonListener({ eventSource, onEvent: () => {}, logger });
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+});

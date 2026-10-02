@@ -215,6 +215,7 @@ describe('RpcEventSource', () => {
       };
 
       const source = new RpcEventSource({
+        startLedger: 1000,
         rpcUrl: 'http://localhost:8000',
         networkPassphrase: 'Test SDF Network ; September 2015',
         contractIds: ['CTEST'],
@@ -254,6 +255,7 @@ describe('RpcEventSource', () => {
       };
 
       const source = new RpcEventSource({
+        startLedger: 1000,
         rpcUrl: 'http://localhost:8000',
         networkPassphrase: 'Test SDF Network ; September 2015',
         contractIds: ['CTEST'],
@@ -282,6 +284,7 @@ describe('RpcEventSource', () => {
     };
 
     const source = new RpcEventSource({
+        startLedger: 1000,
       rpcUrl: 'http://localhost:8000',
       networkPassphrase: 'Test SDF Network ; September 2015',
       contractIds: ['CTEST'],
@@ -306,6 +309,7 @@ describe('RpcEventSource', () => {
     };
 
     const source = new RpcEventSource({
+        startLedger: 1000,
       rpcUrl: 'http://localhost:8000',
       networkPassphrase: 'Test SDF Network ; September 2015',
       contractIds: ['CTEST'],
@@ -332,6 +336,7 @@ describe('RpcEventSource', () => {
     };
 
     const source = new RpcEventSource({
+        startLedger: 1000,
       rpcUrl: 'http://localhost:8000',
       networkPassphrase: 'Test SDF Network ; September 2015',
       contractIds: ['CTEST'],
@@ -344,5 +349,16 @@ describe('RpcEventSource', () => {
 
     // Should fall back to empty string as last resort
     expect(result.nextCursor).toBe('');
+  });
+});
+
+describe('RpcEventSource startLedger validation', () => {
+  it('throws a descriptive error when startLedger is omitted on a cursor-less call', async () => {
+    const source = new RpcEventSource({
+      rpcUrl: 'https://rpc.example.com',
+      networkPassphrase: 'Test SDF Network ; September 2015',
+      contractIds: ['CABC'],
+    });
+    await expect(source.getEvents(undefined)).rejects.toThrow(/requires `startLedger`/);
   });
 });
