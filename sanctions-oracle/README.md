@@ -151,6 +151,115 @@ being de-duplicated in advance; the per-address check is now safe even if a call
 passes the same address multiple times or two tasks reach the same cache miss at
 once.
 
+### Caching provider results (`ProviderResultCache`)
+
+Pass a `ProviderResultCache` as `SyncOptions.cache` to skip redundant
+`checkAddress` calls for addresses checked recently — useful for frequent
+sync jobs over largely-overlapping address sets against a rate-limited API.
+Entries expire after a TTL (default **1 hour**, `3_600_000` ms); an optional
+second argument caps the number of entries (least-recently-used eviction).
+
+```ts
+import { ProviderResultCache, syncSanctionsToDenylist } from 'sanctions-oracle';
+
+// Reuse one cache instance across sync runs.
+const cache = new ProviderResultCache(15 * 60_000, 10_000); // 15 min TTL, max 10k entries
+
+await syncSanctionsToDenylist({ provider, addresses, writer, cache });
+```
+
+`cache.delete(address)` drops a single stale entry and `cache.clear()`
+empties the cache.
+
+### Concurrency and progress logging
+
+| Option | Default | Description |
+|---|---|---|
+| `concurrency` | unbounded | Maximum number of in-flight `provider.checkAddress` calls. Set it to avoid overwhelming a rate-limited upstream API. |
+| `progressInterval` | `100` | Emit a `Progress: <checked>/<total> addresses checked` log every N addresses. Requires `logger`. |
+
+```ts
+await syncSanctionsToDenylist({
+  provider,
+  addresses,
+  writer,
+  concurrency: 5,
+  logger,
+  progressInterval: 500,
+});
+```
+
+## Rate limiting with `RateLimitedSanctionsProvider`
+
+`RateLimitedSanctionsProvider` wraps any `SanctionsProvider` and adds
+429-aware truncated exponential backoff (with jitter) plus optional
+concurrency limiting — intended for commercial watchlist APIs such as
+Chainalysis, Elliptic, or TRM Labs that enforce per-key rate limits.
+
+```ts
+import { RateLimitedSanctionsProvider, syncSanctionsToDenylist } from 'sanctions-oracle';
+import { MyRestProvider } from './myRestProvider';
+
+const provider = new RateLimitedSanctionsProvider(new MyRestProvider(), {
+  maxRetries:  5,       // give up after 5 attempts (default: 4)
+  baseDelayMs: 500,     // first back-off window in ms (default: 250)
+  maxDelayMs:  30_000,  // cap individual delay at 30 s (default: 16 000)
+  concurrency: 3,       // at most 3 in-flight requests (default: unlimited)
+});
+
+await syncSanctionsToDenylist({ provider, addresses, writer });
+```
+
+Backoff: `delay = min(baseDelayMs × 2^attempt, maxDelayMs) + jitter [0, baseDelayMs)`.
+After `maxRetries` attempts the last error is re-thrown.
+
+**`concurrency` here vs. `SyncOptions.concurrency`:** the wrapper's
+`concurrency` only limits calls that are actually issued in parallel. If
+`syncSanctionsToDenylist` runs with its default (sequential) concurrency, the
+wrapper's limit has no effect. When you raise `SyncOptions.concurrency`, the
+wrapper's `concurrency` acts as a tighter cap on requests reaching the
+upstream API — useful when the same wrapped provider is shared across
+several concurrent sync jobs.
+
+## Metrics and tracing
+
+`syncSanctionsToDenylist` accepts optional `metrics` and `tracer` options.
+Both default to no-op implementations with zero overhead.
+
+- `metrics` — a Prometheus-compatible `MetricsRegistry` recording a
+  per-phase/outcome counter and a latency histogram.
+- `tracer` — an OpenTelemetry-compatible `DefaultTracer` that emits one span
+  per operation to a pluggable `exporter`. Stellar addresses are **not**
+  attached to spans unless `redactPayload: false` is set on the tracer.
+
+Tracked phases: `address_check` (each `provider.checkAddress` call) and
+`denylist_write` (each `add_to_denylist` submission).
+
+```ts
+import { MetricsRegistry, DefaultTracer, syncSanctionsToDenylist } from 'sanctions-oracle';
+
+const metrics = new MetricsRegistry();
+const tracer = new DefaultTracer({ exporter: async (span) => console.log(span) });
+
+await syncSanctionsToDenylist({ provider, addresses, writer, metrics, tracer });
+
+// Serve this from your /metrics endpoint.
+console.log(metrics.expose());
+```
+
+Sample `expose()` output:
+
+```
+# HELP sanctions_oracle_requests_total Total requests by phase and outcome
+# TYPE sanctions_oracle_requests_total counter
+sanctions_oracle_requests_total{phase="address_check",outcome="success"} 42
+sanctions_oracle_requests_total{phase="denylist_write",outcome="success"} 3
+# HELP sanctions_oracle_duration_ms Histogram of phase durations (ms)
+# TYPE sanctions_oracle_duration_ms histogram
+sanctions_oracle_duration_ms_bucket{phase="address_check",le="100"} 40
+...
+```
+
 ## Running multiple providers with `ProviderRegistry`
 
 Real deployments often want to check an address against more than one
