@@ -230,5 +230,34 @@ describe('RateLimitedSanctionsProvider', () => {
       const result = await provider.checkAddress('GADDR');
       expect(result).toEqual({ flagged: false, source: 'default-test' });
     });
+
+    it.each([0, -1, Number.NaN, Number.NEGATIVE_INFINITY])(
+      'rejects invalid concurrency %p before a check can deadlock',
+      (concurrency) => {
+        const inner: SanctionsProvider = {
+          async checkAddress() {
+            return { flagged: false, source: 'should-not-run' };
+          },
+        };
+
+        expect(() => new RateLimitedSanctionsProvider(inner, { concurrency })).toThrow(
+          'concurrency must be a positive number or Infinity',
+        );
+      },
+    );
+
+    it.each([Infinity, undefined])('allows unlimited concurrency with %p', async (concurrency) => {
+      const inner: SanctionsProvider = {
+        async checkAddress() {
+          return { flagged: false, source: 'unlimited' };
+        },
+      };
+      const provider = new RateLimitedSanctionsProvider(inner, { concurrency });
+
+      await expect(provider.checkAddress('GADDR')).resolves.toEqual({
+        flagged: false,
+        source: 'unlimited',
+      });
+    });
   });
 });

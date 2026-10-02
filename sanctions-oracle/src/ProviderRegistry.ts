@@ -64,6 +64,7 @@ interface RegisteredProvider {
   name: string;
   provider: SanctionsProvider;
   priority: number;
+  registrationIndex: number;
 }
 
 const DEFAULT_PRIORITY = Number.POSITIVE_INFINITY;
@@ -83,6 +84,7 @@ export class ProviderRegistry implements SanctionsProvider {
   private readonly policy: ConflictResolutionPolicy;
   private readonly onProviderError: ProviderErrorMode;
   private readonly tieBreak: TieBreak;
+  private nextRegistrationIndex = 0;
 
   constructor(options: ProviderRegistryOptions) {
     this.policy = options.policy;
@@ -98,6 +100,7 @@ export class ProviderRegistry implements SanctionsProvider {
       name,
       provider,
       priority: options.priority ?? DEFAULT_PRIORITY,
+      registrationIndex: this.nextRegistrationIndex++,
     });
   }
 
@@ -223,17 +226,27 @@ export class ProviderRegistry implements SanctionsProvider {
     registered: RegisteredProvider[],
     votingResults: ProviderCheckOutcome[],
   ): { flagged: boolean; source: string } {
-    const priorityByName = new Map(registered.map((entry) => [entry.name, entry.priority]));
-    const ordered = [...votingResults].sort(
-      (a, b) =>
-        (priorityByName.get(a.name) ?? DEFAULT_PRIORITY) -
-        (priorityByName.get(b.name) ?? DEFAULT_PRIORITY),
+    const metadataByName = new Map(
+      registered.map((entry) => [
+        entry.name,
+        { priority: entry.priority, registrationIndex: entry.registrationIndex },
+      ]),
     );
+    const ordered = [...votingResults].sort((a, b) => {
+      const metadataA = metadataByName.get(a.name);
+      const metadataB = metadataByName.get(b.name);
+      if (!metadataA || !metadataB) return 0;
+      if (metadataA.priority < metadataB.priority) return -1;
+      if (metadataA.priority > metadataB.priority) return 1;
+      return metadataA.registrationIndex - metadataB.registrationIndex;
+    });
     const winner = ordered[0];
     return { flagged: winner.flagged, source: formatSources([winner]) };
   }
 }
 
 function formatSources(outcomes: ProviderCheckOutcome[]): string {
-  return outcomes.map((o) => `${o.name}:${o.source}`).join(', ');
+  // Provider source labels are opaque external data. Encode the value so a
+  // comma or colon from a provider cannot be mistaken for our separators.
+  return outcomes.map((o) => `${o.name}:${encodeURIComponent(o.source)}`).join(', ');
 }

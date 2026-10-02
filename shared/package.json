@@ -11,6 +11,9 @@
     "build": "tsc -p .",
     "test": "jest"
   },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^16.0.1"
+  },
   "devDependencies": {
     "@types/node": "^20.14.0",
     "typescript": "^5.5.4"

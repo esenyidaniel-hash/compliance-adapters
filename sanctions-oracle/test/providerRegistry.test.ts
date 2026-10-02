@@ -48,6 +48,15 @@ describe('ProviderRegistry', () => {
   });
 
   describe('disagreement: any-flag-wins', () => {
+    it('escapes commas and colons in provider source labels', async () => {
+      const registry = new ProviderRegistry({ policy: 'any-flag-wins' });
+      registry.register('csv-provider', fakeProvider(true, 'OFAC, SDN List:2026'));
+
+      const result = await registry.checkAddress(ADDRESS);
+
+      expect(result.source).toBe('csv-provider:OFAC%2C%20SDN%20List%3A2026');
+    });
+
     it('flags the address if a single provider flags it', async () => {
       const registry = new ProviderRegistry({ policy: 'any-flag-wins' });
       registry.register('clean-a', fakeProvider(false, 'list-a'));
@@ -129,6 +138,18 @@ describe('ProviderRegistry', () => {
       expect(detailed.flagged).toBe(true);
       expect(detailed.source).toBe('external-list:sdn-list');
       expect(detailed.errors).toEqual([{ name: 'internal-denylist', error: 'upstream down' }]);
+    });
+
+    it('uses registration order when the remaining providers are unprioritized', async () => {
+      const registry = new ProviderRegistry({ policy: 'priority-override' });
+      registry.register('failed-primary', throwingProvider('upstream down'), { priority: 0 });
+      registry.register('first-unprioritized', fakeProvider(true, 'list-a'));
+      registry.register('second-unprioritized', fakeProvider(false, 'list-b'));
+
+      const detailed = await registry.checkAddressDetailed(ADDRESS);
+
+      expect(detailed.flagged).toBe(true);
+      expect(detailed.source).toBe('first-unprioritized:list-a');
     });
 
     it('providers registered without a priority sort after prioritized ones', async () => {

@@ -1,8 +1,8 @@
 import { Keypair } from '@stellar/stellar-sdk';
 import type { NextFunction, Request, Response } from 'express';
-import { Keypair } from '@stellar/stellar-sdk';
-import { createSep10Middleware } from '../src/middleware';
+import { createSep10Middleware, parseBearerToken } from '../src/middleware';
 import { Sep10MiddlewareOptions } from '../src/middleware';
+import { VerifyChallengeOptions } from '../src/verify';
 import * as verifyModule from '../src/verify';
 import { RevocationStore } from '../src/revocation';
 
@@ -26,6 +26,69 @@ function makeRes(): Response {
   res.json = jest.fn().mockReturnValue(res);
   return res;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// parseBearerToken unit tests (#38)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('parseBearerToken', () => {
+  it('returns ok:true with the token for a well-formed Bearer header', () => {
+    const result = parseBearerToken('Bearer abc123token');
+    expect(result).toEqual({ ok: true, token: 'abc123token' });
+  });
+
+  it('is case-insensitive on the scheme (bearer, BEARER, bEaReR)', () => {
+    for (const scheme of ['bearer', 'BEARER', 'bEaReR']) {
+      const result = parseBearerToken(`${scheme} mytoken`);
+      expect(result).toEqual({ ok: true, token: 'mytoken' });
+    }
+  });
+
+  it('returns ok:false for an empty header string', () => {
+    const result = parseBearerToken('');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('missing bearer token');
+  });
+
+  it('returns ok:false for a non-Bearer scheme', () => {
+    const result = parseBearerToken('Basic abc123');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('missing bearer token');
+  });
+
+  it('returns ok:false for "Bearer" with no token (no space)', () => {
+    const result = parseBearerToken('Bearer');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('missing bearer token');
+  });
+
+  it('returns ok:false for "Bearer " with only trailing whitespace', () => {
+    const result = parseBearerToken('Bearer ');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('missing bearer token');
+  });
+
+  it('returns ok:false for a header with internal whitespace in token part', () => {
+    const result = parseBearerToken('Bearer token with spaces');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('malformed bearer token');
+  });
+
+  it('returns ok:true with a realistic base64-XDR token string', () => {
+    const token = 'AAAAAQAAAAB'.repeat(100);
+    const result = parseBearerToken(`Bearer ${token}`);
+    expect(result).toEqual({ ok: true, token });
+  });
+
+  it('returns ok:false for a plain string with no space (unrecognised scheme)', () => {
+    const result = parseBearerToken('notaheader');
+    expect(result.ok).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// createSep10Middleware — malformed Authorization header
+// ─────────────────────────────────────────────────────────────────────────────
 
 describe('createSep10Middleware', () => {
   describe('malformed Authorization header', () => {
@@ -285,5 +348,57 @@ describe('createSep10Middleware - domain format validation', () => {
     expect(() =>
       createSep10Middleware({ ...options, webAuthDomain: ['example.com', 'http://x.com'] }),
     ).toThrow(/bare domain/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #39 — construction-time validation tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('createSep10Middleware - construction-time option validation (#39)', () => {
+  it('throws immediately for an invalid serverAccountId', () => {
+    expect(() =>
+      createSep10Middleware({ ...options, serverAccountId: 'not-a-valid-key' }),
+    ).toThrow(/serverAccountId/);
+  });
+
+  it('throws immediately for an empty serverAccountId string', () => {
+    expect(() =>
+      createSep10Middleware({ ...options, serverAccountId: '' }),
+    ).toThrow(/serverAccountId/);
+  });
+
+  it('throws immediately when homeDomains is an empty array', () => {
+    expect(() =>
+      createSep10Middleware({ ...options, homeDomains: [] as unknown as string }),
+    ).toThrow(/homeDomains/);
+  });
+
+  it('throws immediately when homeDomains contains an empty string', () => {
+    expect(() =>
+      createSep10Middleware({ ...options, homeDomains: ['example.com', ''] }),
+    ).toThrow(/homeDomains/);
+  });
+
+  it('throws immediately when webAuthDomain is an empty array', () => {
+    expect(() =>
+      createSep10Middleware({ ...options, webAuthDomain: [] as unknown as string }),
+    ).toThrow(/webAuthDomain/);
+  });
+
+  it('throws immediately when webAuthDomain contains an empty string', () => {
+    expect(() =>
+      createSep10Middleware({ ...options, webAuthDomain: ['example.com', ''] }),
+    ).toThrow(/webAuthDomain/);
+  });
+
+  it('does NOT throw for valid options (happy path)', () => {
+    expect(() => createSep10Middleware(options)).not.toThrow();
+  });
+
+  it('does NOT throw for valid options with array homeDomains', () => {
+    expect(() =>
+      createSep10Middleware({ ...options, homeDomains: ['example.com', 'other.com'] }),
+    ).not.toThrow();
   });
 });

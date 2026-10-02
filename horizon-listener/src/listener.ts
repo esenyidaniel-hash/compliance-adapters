@@ -85,16 +85,23 @@ const defaultSleep = (ms: number, signal?: AbortSignal): Promise<void> =>
       return;
     }
     const timeoutId = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
-      clearTimeout(timeoutId);
-      reject(signal.reason ?? new Error('Sleep aborted'));
-    }, { once: true });
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timeoutId);
+        reject(signal.reason ?? new Error('Sleep aborted'));
+      },
+      { once: true },
+    );
   });
 
 export class HorizonListener {
   private readonly eventSource: EventSource;
   private readonly onEvent: (event: RawContractEvent) => Promise<void> | void;
-  private readonly onEventFailure?: (event: RawContractEvent, error: unknown) => void | Promise<void>;
+  private readonly onEventFailure?: (
+    event: RawContractEvent,
+    error: unknown,
+  ) => void | Promise<void>;
   private readonly pollIntervalMs: number;
   private readonly maxRetries: number;
   private readonly logger: Logger;
@@ -176,7 +183,8 @@ export class HorizonListener {
           );
         }
 
-        const delayMs = computeBackoffDelayMs(this.attempt, this.backoffOptions);
+        // `attempt` is one-based for retry limits, while backoff uses a zero-based exponent.
+        const delayMs = computeBackoffDelayMs(this.attempt - 1, this.backoffOptions);
         this.sleepAbortController = new AbortController();
         try {
           await this.sleep(delayMs, this.sleepAbortController.signal);
@@ -247,6 +255,9 @@ export class HorizonListener {
           this.logger.debug(
             `horizon-listener: backfill page consumed (${response.events.length} events), fetching next page`,
           );
+          if (!this.running) {
+            break;
+          }
           continue;
         }
       }

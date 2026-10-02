@@ -131,4 +131,10 @@ describe('computeBackoffDelayMs', () => {
       expect(Number.isFinite(delay)).toBe(true);
     }
   });
+
+  it('throws RangeError for invalid attempt values (NaN, negative, Infinity)', () => {
+    expect(() => computeBackoffDelayMs(NaN)).toThrow(RangeError);
+    expect(() => computeBackoffDelayMs(-1)).toThrow(RangeError);
+    expect(() => computeBackoffDelayMs(Infinity)).toThrow(RangeError);
+  });
 });

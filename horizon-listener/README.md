@@ -46,7 +46,7 @@ See the comments in `.env.example` for allowed values and testnet guidance.
 
 ## Quick start: `createWebhookForwarder`
 
-For the common case — forward every contract event to a webhook — use the
+For the common case ï¿½ forward every contract event to a webhook ï¿½ use the
 `createWebhookForwarder` factory, which wires `RpcEventSource`,
 `HttpWebhookSender`, and `HorizonListener` together in one call:
 
@@ -177,7 +177,7 @@ RPC returns them:
 
 1. Each page is processed (every event goes through `onEvent`) and the cursor
    advances.
-2. If the page contained events, the next page is fetched **immediately** —
+2. If the page contained events, the next page is fetched **immediately** ï¿½
    the listener does **not** sleep `pollIntervalMs` between backfill pages.
 3. The first page that returns **zero events** ends backfill. The listener logs
    `backfill complete, switching to live polling` and from then on behaves
@@ -187,9 +187,9 @@ RPC returns them:
 
 Interaction with `mode`:
 
-- **`poll`** — after backfill, the listener sleeps `pollIntervalMs` after
+- **`poll`** ï¿½ after backfill, the listener sleeps `pollIntervalMs` after
   every poll, as usual.
-- **`stream`** — during backfill the behaviour is identical (page immediately
+- **`stream`** ï¿½ during backfill the behaviour is identical (page immediately
   while events are returned). After backfill, `stream` keeps fetching
   immediately whenever a poll returns events and only sleeps during quiet
   periods, so the transition is effectively seamless.
@@ -291,10 +291,11 @@ added.
 
 If `eventSource.getEvents(...)` throws (RPC unreachable, rate-limited, cursor
 expired, etc.), `HorizonListener` does not crash: it logs a warning, waits an
-exponentially increasing backoff delay (see `computeBackoffDelayMs` in
-`src/backoff.ts`, capped at 30s by default with jitter), and retries. The
-retry counter resets to zero after any subsequent successful poll. If
-`maxRetries` consecutive failures are exceeded (default 10), `start()`
+exponentially increasing backoff delay (see `computeBackoffDelayMs` in the
+[`@compliance-adapters/backoff`](../backoff/src/index.ts) package, re-exported
+from this package's entry point, capped at 30s by default with jitter), and
+retries. The retry counter resets to zero after any subsequent successful poll.
+If `maxRetries` consecutive failures are exceeded (default 10), `start()`
 rejects so the caller knows the listener gave up â€” in a real deployment a
 process manager would be responsible for restarting the process.
 
@@ -338,6 +339,100 @@ console-backed implementation. Log levels are used semantically:
 
 Pass a custom `Logger` instance to `HorizonListener` options to customize
 output (e.g., to route to a production logging service).
+
+## Metrics
+
+`horizon-listener` exposes a Prometheus-compatible metrics registry that can be
+attached to both the listener and the webhook sender. This is useful when a
+long-lived process needs visibility into poll health, relay latency, and
+webhook delivery outcomes without instrumenting each call site by hand.
+
+### Enabling metrics
+
+```ts
+import {
+  HorizonListener,
+  HttpWebhookSender,
+  MetricsRegistry,
+} from 'horizon-listener';
+
+const metrics = new MetricsRegistry();
+
+const webhook = new HttpWebhookSender({
+  url: 'http://localhost:4000/webhook',
+  metrics,
+});
+
+const listener = new HorizonListener({
+  eventSource,
+  onEvent: async (event) => {
+    await webhook.send(event);
+  },
+  metrics,
+});
+```
+
+Both `HorizonListenerOptions.metrics` and `HttpWebhookSenderOptions.metrics`
+accept a `MetricsRegistry` instance (or `NoopMetricsRegistry` for zero-overhead
+behavior when metrics are disabled). If you omit the `metrics` option,
+`horizon-listener` falls back to a no-op registry and records nothing.
+
+### Tracked phases and outcomes
+
+The registry records per-phase counters and duration histograms for these
+phases:
+
+- `rpc_poll` â€” each polling call to `eventSource.getEvents()`
+- `event_relay` â€” each call to the `onEvent` callback
+- `webhook` â€” each outbound `HttpWebhookSender.send()` attempt
+
+Each phase carries a low-cardinality `outcome` label:
+
+- `success` â€” the phase completed successfully
+- `failure` â€” the phase returned an error or failed a request
+- `cancelled` â€” a poll was abandoned because the listener hit `maxRetries`
+
+The exported metric names are prefixed with the value from `prefix` (default:
+`horizon_listener`):
+
+- `${prefix}_requests_total{phase="...",outcome="..."}`
+- `${prefix}_duration_ms_bucket{phase="...",le="..."}`
+- `${prefix}_duration_ms_sum{phase="..."}`
+- `${prefix}_duration_ms_count{phase="..."}`
+
+### Scraping example
+
+```ts
+const metrics = new MetricsRegistry({ prefix: 'horizon_listener' });
+console.log(metrics.expose());
+```
+
+Example output:
+
+```text
+# HELP horizon_listener_requests_total Total requests by phase and outcome
+# TYPE horizon_listener_requests_total counter
+horizon_listener_requests_total{phase="rpc_poll",outcome="success"} 42
+horizon_listener_requests_total{phase="rpc_poll",outcome="failure"} 3
+horizon_listener_requests_total{phase="event_relay",outcome="success"} 37
+horizon_listener_requests_total{phase="event_relay",outcome="failure"} 2
+horizon_listener_requests_total{phase="webhook",outcome="success"} 32
+horizon_listener_requests_total{phase="webhook",outcome="failure"} 5
+horizon_listener_requests_total{phase="webhook",outcome="cancelled"} 0
+
+# HELP horizon_listener_duration_ms_bucket Histogram of phase durations in milliseconds
+# TYPE horizon_listener_duration_ms histogram
+horizon_listener_duration_ms_bucket{phase="rpc_poll",le="5"} 10
+horizon_listener_duration_ms_bucket{phase="rpc_poll",le="25"} 25
+horizon_listener_duration_ms_bucket{phase="rpc_poll",le="100"} 39
+horizon_listener_duration_ms_bucket{phase="rpc_poll",le="+Inf"} 42
+horizon_listener_duration_ms_sum{phase="rpc_poll"} 1245
+horizon_listener_duration_ms_count{phase="rpc_poll"} 42
+```
+
+This output is intentionally Prometheus-compatible, so it can be scraped by a
+standard `/metrics` endpoint or by a sidecar collector in a long-running
+operator environment.
 
 ## Links
 

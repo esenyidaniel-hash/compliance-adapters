@@ -1,5 +1,15 @@
 import * as fs from 'fs';
-import { syncSanctionsToDenylist, DenylistWriter, ProviderResultCache, AuditLogEntry, Logger, createRpcDenylistWriter, parseArgs, CliArgs, runCli } from '../src/sync';
+import {
+  syncSanctionsToDenylist,
+  DenylistWriter,
+  ProviderResultCache,
+  AuditLogEntry,
+  Logger,
+  createRpcDenylistWriter,
+  parseArgs,
+  CliArgs,
+  runCli,
+} from '../src/sync';
 import { MockSanctionsProvider, MOCK_FLAGGED_ADDRESSES } from '../src/mockProvider';
 import { SanctionsProvider } from '../src/SanctionsProvider';
 
@@ -242,7 +252,10 @@ describe('syncSanctionsToDenylist', () => {
   it('returns correct statistics for mixed clean and flagged addresses', async () => {
     const provider = new MockSanctionsProvider();
     const writer = makeFakeWriter();
-    const cleanAddresses = ['GCLEAN1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'GCLEAN2AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'];
+    const cleanAddresses = [
+      'GCLEAN1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      'GCLEAN2AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+    ];
     const allAddresses = [FLAGGED_ADDRESS, ...cleanAddresses];
 
     const result = await syncSanctionsToDenylist({
@@ -368,7 +381,10 @@ describe('syncSanctionsToDenylist', () => {
   });
 
   it('issue #60: emits progress logs at specified intervals', async () => {
-    const addresses = Array.from({ length: 350 }, (_, i) => `GADDRESS${i}000000000000000000000000000000000`);
+    const addresses = Array.from(
+      { length: 350 },
+      (_, i) => `GADDRESS${i}000000000000000000000000000000000`,
+    );
     const provider: SanctionsProvider = {
       checkAddress: jest.fn().mockResolvedValue({ flagged: false, source: 'test' }),
     };
@@ -391,7 +407,10 @@ describe('syncSanctionsToDenylist', () => {
   });
 
   it('issue #60: uses default progressInterval of 100 if logger is provided', async () => {
-    const addresses = Array.from({ length: 250 }, (_, i) => `GADDRESS${i}000000000000000000000000000000000`);
+    const addresses = Array.from(
+      { length: 250 },
+      (_, i) => `GADDRESS${i}000000000000000000000000000000000`,
+    );
     const provider: SanctionsProvider = {
       checkAddress: jest.fn().mockResolvedValue({ flagged: false, source: 'test' }),
     };
@@ -430,7 +449,10 @@ describe('syncSanctionsToDenylist', () => {
   });
 
   it('issue #57: respects concurrency limit to avoid overwhelming provider', async () => {
-    const addresses = Array.from({ length: 10 }, (_, i) => `GADDRESS${i}000000000000000000000000000000000`);
+    const addresses = Array.from(
+      { length: 10 },
+      (_, i) => `GADDRESS${i}000000000000000000000000000000000`,
+    );
     let maxConcurrent = 0;
     let currentConcurrent = 0;
 
@@ -464,7 +486,9 @@ describe('syncSanctionsToDenylist', () => {
     };
 
     const mockKeypair = {
-      publicKey: jest.fn().mockReturnValue('GBUQWP3BOUZX34ULNQG23RQ6F4BVWCIBIT2MYWYTE2VJ5C5TCVDPJJAH'),
+      publicKey: jest
+        .fn()
+        .mockReturnValue('GBUQWP3BOUZX34ULNQG23RQ6F4BVWCIBIT2MYWYTE2VJ5C5TCVDPJJAH'),
       sign: jest.fn(),
     };
 
@@ -568,7 +592,12 @@ describe('Audit logging', () => {
   it('audit logger receives entries with correct fields', async () => {
     const provider = new MockSanctionsProvider();
     const auditLogs: AuditLogEntry[] = [];
-    const writer: DenylistWriter & { addToDenylistWithSource?: (address: string, source: string) => Promise<{ hash: string; auditLog?: AuditLogEntry }> } = {
+    const writer: DenylistWriter & {
+      addToDenylistWithSource?: (
+        address: string,
+        source: string,
+      ) => Promise<{ hash: string; auditLog?: AuditLogEntry }>;
+    } = {
       addToDenylist: jest.fn().mockResolvedValue({ hash: 'fakehash' }),
       addToDenylistWithSource: jest.fn(async (address: string, source: string) => {
         const entry: AuditLogEntry = {
@@ -600,7 +629,12 @@ describe('Audit logging', () => {
   it('audit logging is skipped in dry-run mode', async () => {
     const provider = new MockSanctionsProvider();
     const auditLogs: AuditLogEntry[] = [];
-    const writer: DenylistWriter & { addToDenylistWithSource?: (address: string, source: string) => Promise<{ hash: string; auditLog?: AuditLogEntry }> } = {
+    const writer: DenylistWriter & {
+      addToDenylistWithSource?: (
+        address: string,
+        source: string,
+      ) => Promise<{ hash: string; auditLog?: AuditLogEntry }>;
+    } = {
       addToDenylist: jest.fn().mockResolvedValue({ hash: 'fakehash' }),
       addToDenylistWithSource: jest.fn(async (address: string, source: string) => {
         const entry: AuditLogEntry = {
@@ -781,7 +815,8 @@ describe('CLI exit codes for partial vs total sync failure', () => {
     const provider = new MockSanctionsProvider();
 
     const partialSuccessWriter = makeFakeWriter();
-    partialSuccessWriter.addToDenylist = jest.fn()
+    partialSuccessWriter.addToDenylist = jest
+      .fn()
       .mockResolvedValueOnce({ hash: 'hash1' })
       .mockRejectedValueOnce(new Error('Failed'));
 
@@ -876,12 +911,17 @@ describe('CSV address import support', () => {
 describe('parseArgs', () => {
   it('parses all recognized flags', () => {
     const result = parseArgs([
-      '--addresses', '/path/to/addresses.json',
+      '--addresses',
+      '/path/to/addresses.json',
       '--dry-run',
-      '--contract-id', 'CBSXYZ',
-      '--rpc-url', 'https://soroban-testnet.stellar.org',
-      '--network-passphrase', 'Test SDF Network ; September 2015',
-      '--secret-key', 'SBXXXXXXXX',
+      '--contract-id',
+      'CBSXYZ',
+      '--rpc-url',
+      'https://soroban-testnet.stellar.org',
+      '--network-passphrase',
+      'Test SDF Network ; September 2015',
+      '--secret-key',
+      'SBXXXXXXXX',
     ]);
 
     expect(result.addressesPath).toBe('/path/to/addresses.json');
@@ -892,6 +932,10 @@ describe('parseArgs', () => {
     expect(result.secretKey).toBe('SBXXXXXXXX');
   });
 
+  it('rejects a missing value instead of consuming the next flag', () => {
+    expect(() => parseArgs(['--addresses', '--dry-run'])).toThrow('Missing value for --addresses');
+    expect(() => parseArgs(['--rpc-url'])).toThrow('Missing value for --rpc-url');
+  });
   it('handles --help flag', () => {
     const result = parseArgs(['--help']);
     expect(result.help).toBe(true);
@@ -904,8 +948,10 @@ describe('parseArgs', () => {
 
   it('ignores unknown flags', () => {
     const result = parseArgs([
-      '--addresses', '/path/to/addresses.json',
-      '--unknown-flag', 'value',
+      '--addresses',
+      '/path/to/addresses.json',
+      '--unknown-flag',
+      'value',
       '--dry-run',
     ]);
 
@@ -950,7 +996,11 @@ describe('runCli', () => {
   describe('addresses file validation', () => {
     it('rejects addresses file with empty string entries', async () => {
       const addressesFile = '/tmp/test-addresses-empty.json';
-      const addresses = ['GTEST1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', '', 'GTEST2AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'];
+      const addresses = [
+        'GTEST1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        '',
+        'GTEST2AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      ];
       fs.writeFileSync(addressesFile, JSON.stringify(addresses));
 
       await runCli(['--addresses', addressesFile, '--dry-run']);

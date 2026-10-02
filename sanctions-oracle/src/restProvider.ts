@@ -4,29 +4,35 @@
  */
 
 /**
- * @file sanctions-oracle/examples/restProvider.ts
+ * @file restProvider.ts
  *
- * A realistic example of a REST-backed SanctionsProvider that queries an
- * external watchlist API.  This is the runnable, tested version of the
- * pattern shown in the SanctionsProvider interface doc comment.
+ * Reference REST-backed implementation of {@link SanctionsProvider}.
  *
- * Key differences from the original doc-comment snippet:
- *  - The `timeout` property has been removed from the fetch RequestInit (it
- *    is not a real fetch option).  AbortController + setTimeout is used
- *    instead, following the same approach as HttpWebhookSender in
- *    horizon-listener/src/webhook.ts.
- *  - `fetchImpl` is injectable so the class can be unit-tested without a
- *    real network connection (see test/restProvider.test.ts).
+ * On every `checkAddress` call it issues a single GET request to
+ * `<apiBaseUrl>/check?address=<address>` and maps the JSON response to the
+ * `{ flagged, source }` shape the sync engine expects.
  *
- * Usage:
- *   const provider = new RestSanctionsProvider(
- *     'https://api.watchlist-provider.com',
- *     process.env.WATCHLIST_API_KEY!,
- *   );
- *   await syncSanctionsToDenylist({ provider, ... });
+ * ## Usage
+ *
+ * ```ts
+ * import { RestSanctionsProvider, syncSanctionsToDenylist } from 'sanctions-oracle';
+ *
+ * const provider = new RestSanctionsProvider({
+ *   apiBaseUrl: 'https://api.watchlist-provider.com',
+ *   apiKey: process.env.WATCHLIST_API_KEY!,
+ * });
+ *
+ * await syncSanctionsToDenylist({ provider, addresses, writer });
+ * ```
+ *
+ * **Fail-open vs fail-closed:** The catch block re-throws so the caller
+ * (or the retry wrapper inside the sync engine) decides whether to fail
+ * open (skip the address) or fail closed (treat it as flagged).
+ * Override this behaviour in a subclass or wrapper if your compliance
+ * policy requires a different default.
  */
 
-import type { SanctionsProvider } from '../src/SanctionsProvider';
+import type { SanctionsProvider } from './SanctionsProvider';
 
 /** Shape returned by the hypothetical watchlist REST API. */
 interface SanctionsApiResponse {
@@ -55,15 +61,8 @@ export interface RestSanctionsProviderOptions {
 /**
  * REST-backed implementation of {@link SanctionsProvider}.
  *
- * On every `checkAddress` call it issues a single GET request to
- * `<apiBaseUrl>/check?address=<address>` and maps the JSON response to the
- * `{ flagged, source }` shape the sync engine expects.
- *
- * **Fail-open vs fail-closed:** The catch block re-throws so the caller
- * (or the retry wrapper inside the sync engine) decides whether to fail
- * open (skip the address) or fail closed (treat it as flagged).  Override
- * this behaviour in a subclass or wrapper if your compliance policy requires
- * a different default.
+ * Calls a configurable HTTP endpoint per address and maps the JSON
+ * response to the `{ flagged, source }` shape the sync engine expects.
  */
 export class RestSanctionsProvider implements SanctionsProvider {
   private readonly apiBaseUrl: string;

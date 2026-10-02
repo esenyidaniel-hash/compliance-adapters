@@ -12,9 +12,9 @@
  *
  * Phases instrumented
  * ────────────────────
- * rpc_poll    — each call to \`eventSource.getEvents()\`
- * event_relay — each call to the \`onEvent\` handler
- * webhook     — each call to a \`WebhookSender.send()\`
+ * rpc_poll    — each call to `eventSource.getEvents()`
+ * event_relay — each call to the `onEvent` handler
+ * webhook     — each call to a `WebhookSender.send()`
  */
 
 
