@@ -4,6 +4,7 @@ import {
   InvalidClientAddressError,
   InvalidDomainError,
   InvalidMemoError,
+  ServerKeypairCannotSignError,
 } from '../src/challenge';
 
 describe('generateChallenge', () => {

@@ -55,25 +55,25 @@ async function applyLabelToOpenIssues(label) {
         owner: repoOwner,
         repo: repoName,
         issue_number: issue.number,
-        labels: [label],
+        labels: ['package: sep10-auth'],
       });
-      console.log('Labeled issue', issue.number, 'with', label);
+      console.log('Labeled issue', issue.number, 'with', 'package: sep10-auth');
     } else if (text.includes('sanctions-oracle') || text.includes('sanctions oracle') ) {
       await octokit.request('POST /repos/{owner}/{repo}/issues/{issue_number}/labels', {
         owner: repoOwner,
         repo: repoName,
         issue_number: issue.number,
-        labels: [label],
+        labels: ['package: sanctions-oracle'],
       });
-      console.log('Labeled issue', issue.number, 'with', label);
+      console.log('Labeled issue', issue.number, 'with', 'package: sanctions-oracle');
     } else if (text.includes('horizon-listener') || text.includes('horizon listener') ) {
       await octokit.request('POST /repos/{owner}/{repo}/issues/{issue_number}/labels', {
         owner: repoOwner,
         repo: repoName,
         issue_number: issue.number,
-        labels: [label],
+        labels: ['package: horizon-listener'],
       });
-      console.log('Labeled issue', issue.number, 'with', label);
+      console.log('Labeled issue', issue.number, 'with', 'package: horizon-listener');
     }
   }
 }
@@ -88,7 +88,5 @@ async function applyLabelToOpenIssues(label) {
   for (const l of labels) await ensureLabel(l.name, l.color, l.description);
 
   // Apply heuristics to open issues retroactively
-  await applyLabelToOpenIssues('package: sep10-auth');
-  await applyLabelToOpenIssues('package: sanctions-oracle');
-  await applyLabelToOpenIssues('package: horizon-listener');
+  await applyLabelToOpenIssues();
 })();

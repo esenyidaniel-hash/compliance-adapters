@@ -1,6 +1,7 @@
 import { SanctionsProvider } from '../src/SanctionsProvider';
 import { MockSanctionsProvider, MOCK_FLAGGED_ADDRESSES } from '../src/mockProvider';
 import { CsvSanctionsProvider } from '../src/csvProvider';
+import { RestSanctionsProvider } from '../src/restProvider';
 import * as path from 'path';
 import { assertSanctionsProviderContract } from './providerContract';
 
@@ -16,6 +17,20 @@ describe('SanctionsProvider interface conformance', () => {
   it('CsvSanctionsProvider conforms to the SanctionsProvider contract', async () => {
     const csvPath = path.join(__dirname, 'fixtures', 'addresses.csv');
     await assertSanctionsProviderContract(new CsvSanctionsProvider(csvPath));
+  });
+
+  it('RestSanctionsProvider conforms to the SanctionsProvider contract', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ is_flagged: false, lists: [] }),
+    } as unknown as Response);
+    const provider = new RestSanctionsProvider({
+      apiBaseUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      fetchImpl,
+    });
+    await assertSanctionsProviderContract(provider);
   });
 });
 

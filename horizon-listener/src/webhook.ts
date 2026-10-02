@@ -17,8 +17,21 @@ export interface WebhookSender {
  * Thrown when the webhook endpoint responds with a non-OK HTTP status.
  * Carries the status code so callers (and the retry loop below) can tell a
  * permanent client error (4xx) apart from a transient server error (5xx).
+ *
+ * @example
+ * ```ts
+ * import { HttpWebhookSender, WebhookHttpError } from 'horizon-listener';
+ *
+ * try {
+ *   await sender.send(event);
+ * } catch (err) {
+ *   if (err instanceof WebhookHttpError) {
+ *     console.error('webhook returned HTTP', err.status);
+ *   }
+ * }
+ * ```
  */
-class WebhookHttpError extends Error {
+export class WebhookHttpError extends Error {
   constructor(
     message: string,
     public readonly status: number,
@@ -77,6 +90,24 @@ export class HttpWebhookSender implements WebhookSender {
   private readonly parentContext: TracingContext | undefined;
 
   constructor(options: HttpWebhookSenderOptions) {
+    // Validate URL is syntactically valid and has a protocol (http/https)
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(options.url);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `horizon-listener: HttpWebhookSender invalid URL "${options.url}" (${reason})`,
+      );
+    }
+
+    // Ensure URL has a protocol (http or https) to catch typos like "localhost:3000"
+    if (!parsedUrl.protocol.startsWith('http')) {
+      throw new Error(
+        `horizon-listener: HttpWebhookSender invalid URL "${options.url}" (must start with http:// or https://)`,
+      );
+    }
+
     this.url = options.url;
     this.signingSecret = options.signingSecret;
     // Node 20+ ships a global fetch; fetchImpl is injectable so tests never

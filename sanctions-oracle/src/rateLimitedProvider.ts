@@ -98,7 +98,8 @@ export interface RateLimitOptions {
    * Has no effect when addresses are processed sequentially (the default in
    * `syncSanctionsToDenylist`).
    *
-   * Omit or set to `Infinity` to disable concurrency limiting.
+   * Omit or set to `Infinity` to disable concurrency limiting. Finite values
+   * must be greater than zero; invalid values are rejected by the constructor.
    *
    * @default Infinity
    */
@@ -168,6 +169,12 @@ export class RateLimitedSanctionsProvider implements SanctionsProvider {
     this.baseDelayMs = options.baseDelayMs ?? 250;
     this.maxDelayMs = options.maxDelayMs ?? 16_000;
     this.concurrency = options.concurrency ?? Infinity;
+    if (
+      this.concurrency !== Infinity &&
+      (!Number.isFinite(this.concurrency) || this.concurrency <= 0)
+    ) {
+      throw new Error('concurrency must be a positive number or Infinity');
+    }
     this.sleep = options._sleep ?? defaultSleep;
   }
 

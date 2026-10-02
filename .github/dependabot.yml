@@ -71,3 +71,30 @@ updates:
     labels:
       - "dependencies"
       - "automerge"
+
+  - package-ecosystem: "npm"
+    directory: "/backoff"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "automerge"
+
+  - package-ecosystem: "npm"
+    directory: "/metrics"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "automerge"
+
+  - package-ecosystem: "npm"
+    directory: "/tracing"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "automerge"

@@ -20,10 +20,13 @@ by invoking its `add_to_denylist(address)` contract function.
 
 - Defines a generic `SanctionsProvider` interface so any external
   sanctions/watchlist data source can be plugged into the sync flow.
-- Ships two reference implementations for local development and tests only:
-  `MockSanctionsProvider`, backed by a small static in-file list, and
-  `CsvSanctionsProvider`, which loads flagged addresses from a CSV file
-  (see [Loading a watchlist from CSV](#loading-a-watchlist-from-csv-csvsanctionsprovider)).
+- Ships three reference implementations: `MockSanctionsProvider`,
+  backed by a small static in-file list (development/testing only);
+  `CsvSanctionsProvider`, which loads flagged addresses from a CSV
+  file (see [Loading a watchlist from CSV](#loading-a-watchlist-from-csv-csvsanctionsprovider));
+  and `RestSanctionsProvider`, a REST-backed provider that calls a
+  configurable HTTP endpoint per address (see
+  [Using RestSanctionsProvider](#using-restsanctionsprovider)).
 - Provides `syncSanctionsToDenylist`, a function that checks a list of
   candidate addresses against a `SanctionsProvider` and, for any flagged
   addresses, calls `add_to_denylist(address)` on a Soroban `denylist-gate`
@@ -32,8 +35,11 @@ by invoking its `add_to_denylist(address)` contract function.
   `DenylistWriter` interface, so the sync logic can be unit tested with a
   fake writer, with no live network required.
 
-This package does **not** implement real sanctions data fetching — that is
-tracked as a separate future issue.
+This package ships a reference `RestSanctionsProvider` that calls a
+configurable HTTP endpoint per address. For production use,
+replace it with a provider backed by your real sanctions data
+source (or wrap `RestSanctionsProvider` with
+`RateLimitedSanctionsProvider` for automatic back-off on 429s).
 
 Provider calls made during a sync (`provider.checkAddress`) are wrapped in
 a retry-with-backoff helper (`withRetry`, see `src/retry.ts`): on failure
@@ -75,7 +81,7 @@ export interface SanctionsProvider {
 }
 ```
 
-Implement this to plug in a real data source. For a detailed, copy-pasteable example of a REST-backed provider, see the `SanctionsProvider` JSDoc `@example` block in [`src/SanctionsProvider.ts`](./src/SanctionsProvider.ts) — it includes error handling and can serve as a template for integrating your own watchlist API.
+Implement this to plug in a real data source. For a production-ready starting point, use the built-in {@link RestSanctionsProvider} (see its constructor options for `apiBaseUrl`, `apiKey`, `timeoutMs`, and `fetchImpl`). You can also write a custom implementation — see the {@link SanctionsProvider} interface JSDoc for a minimal example.
 
 A minimal implementation:
 
@@ -94,6 +100,42 @@ Anything conforming to this interface — a REST client, a cache in front of
 multiple upstream lists, a local CSV loader — can be passed to
 `syncSanctionsToDenylist` in place of `MockSanctionsProvider`.
 
+## Using `RestSanctionsProvider`
+
+`RestSanctionsProvider` is a reference REST-backed implementation of
+`SanctionsProvider` that calls a configurable HTTP endpoint for each
+address. It is suitable as a closer-to-production starting point than
+`MockSanctionsProvider`.
+
+```ts
+import { RestSanctionsProvider, syncSanctionsToDenylist } from 'sanctions-oracle';
+
+const provider = new RestSanctionsProvider({
+  apiBaseUrl: 'https://api.watchlist-provider.com',
+  apiKey: process.env.WATCHLIST_API_KEY!,
+});
+
+await syncSanctionsToDenylist({ provider, addresses, writer });
+```
+
+| Option | Description |
+|---|---|
+| `apiBaseUrl` | Base URL of the watchlist REST API (e.g. `https://api.watchlist-provider.com`). A trailing slash is stripped automatically. |
+| `apiKey` | API key sent as a `Bearer` token in the `Authorization` header. |
+| `timeoutMs` | Request timeout in milliseconds. Defaults to `5000`. Implemented via `AbortController`. |
+| `fetchImpl` | Injectable `fetch` implementation. Defaults to the global `fetch`. Override in tests to avoid real network I/O. |
+
+The provider issues a `GET <apiBaseUrl>/check?address=<address>` request and maps the JSON response to `{ flagged, source }`:
+
+- `flagged` — taken from `response.is_flagged`
+- `source` — the `response.lists` array joined by commas, or
+  `"external-watchlist-api"` when the list is empty
+
+On non-2xx responses the provider throws an error including the HTTP
+status and the address. On network failures or timeouts it throws a
+descriptive error message that `syncSanctionsToDenylist`'s retry
+logic (see [Resuming an interrupted sync](#resuming-an-interrupted-sync)) can handle.
+
 ## Cache and concurrency behavior
 
 `syncSanctionsToDenylist` supports both an optional `cache` (`ProviderResultCache`)
@@ -108,6 +150,115 @@ This is intentionally documented behavior rather than relying on the input array
 being de-duplicated in advance; the per-address check is now safe even if a caller
 passes the same address multiple times or two tasks reach the same cache miss at
 once.
+
+### Caching provider results (`ProviderResultCache`)
+
+Pass a `ProviderResultCache` as `SyncOptions.cache` to skip redundant
+`checkAddress` calls for addresses checked recently — useful for frequent
+sync jobs over largely-overlapping address sets against a rate-limited API.
+Entries expire after a TTL (default **1 hour**, `3_600_000` ms); an optional
+second argument caps the number of entries (least-recently-used eviction).
+
+```ts
+import { ProviderResultCache, syncSanctionsToDenylist } from 'sanctions-oracle';
+
+// Reuse one cache instance across sync runs.
+const cache = new ProviderResultCache(15 * 60_000, 10_000); // 15 min TTL, max 10k entries
+
+await syncSanctionsToDenylist({ provider, addresses, writer, cache });
+```
+
+`cache.delete(address)` drops a single stale entry and `cache.clear()`
+empties the cache.
+
+### Concurrency and progress logging
+
+| Option | Default | Description |
+|---|---|---|
+| `concurrency` | unbounded | Maximum number of in-flight `provider.checkAddress` calls. Set it to avoid overwhelming a rate-limited upstream API. |
+| `progressInterval` | `100` | Emit a `Progress: <checked>/<total> addresses checked` log every N addresses. Requires `logger`. |
+
+```ts
+await syncSanctionsToDenylist({
+  provider,
+  addresses,
+  writer,
+  concurrency: 5,
+  logger,
+  progressInterval: 500,
+});
+```
+
+## Rate limiting with `RateLimitedSanctionsProvider`
+
+`RateLimitedSanctionsProvider` wraps any `SanctionsProvider` and adds
+429-aware truncated exponential backoff (with jitter) plus optional
+concurrency limiting — intended for commercial watchlist APIs such as
+Chainalysis, Elliptic, or TRM Labs that enforce per-key rate limits.
+
+```ts
+import { RateLimitedSanctionsProvider, syncSanctionsToDenylist } from 'sanctions-oracle';
+import { MyRestProvider } from './myRestProvider';
+
+const provider = new RateLimitedSanctionsProvider(new MyRestProvider(), {
+  maxRetries:  5,       // give up after 5 attempts (default: 4)
+  baseDelayMs: 500,     // first back-off window in ms (default: 250)
+  maxDelayMs:  30_000,  // cap individual delay at 30 s (default: 16 000)
+  concurrency: 3,       // at most 3 in-flight requests (default: unlimited)
+});
+
+await syncSanctionsToDenylist({ provider, addresses, writer });
+```
+
+Backoff: `delay = min(baseDelayMs × 2^attempt, maxDelayMs) + jitter [0, baseDelayMs)`.
+After `maxRetries` attempts the last error is re-thrown.
+
+**`concurrency` here vs. `SyncOptions.concurrency`:** the wrapper's
+`concurrency` only limits calls that are actually issued in parallel. If
+`syncSanctionsToDenylist` runs with its default (sequential) concurrency, the
+wrapper's limit has no effect. When you raise `SyncOptions.concurrency`, the
+wrapper's `concurrency` acts as a tighter cap on requests reaching the
+upstream API — useful when the same wrapped provider is shared across
+several concurrent sync jobs.
+
+## Metrics and tracing
+
+`syncSanctionsToDenylist` accepts optional `metrics` and `tracer` options.
+Both default to no-op implementations with zero overhead.
+
+- `metrics` — a Prometheus-compatible `MetricsRegistry` recording a
+  per-phase/outcome counter and a latency histogram.
+- `tracer` — an OpenTelemetry-compatible `DefaultTracer` that emits one span
+  per operation to a pluggable `exporter`. Stellar addresses are **not**
+  attached to spans unless `redactPayload: false` is set on the tracer.
+
+Tracked phases: `address_check` (each `provider.checkAddress` call) and
+`denylist_write` (each `add_to_denylist` submission).
+
+```ts
+import { MetricsRegistry, DefaultTracer, syncSanctionsToDenylist } from 'sanctions-oracle';
+
+const metrics = new MetricsRegistry();
+const tracer = new DefaultTracer({ exporter: async (span) => console.log(span) });
+
+await syncSanctionsToDenylist({ provider, addresses, writer, metrics, tracer });
+
+// Serve this from your /metrics endpoint.
+console.log(metrics.expose());
+```
+
+Sample `expose()` output:
+
+```
+# HELP sanctions_oracle_requests_total Total requests by phase and outcome
+# TYPE sanctions_oracle_requests_total counter
+sanctions_oracle_requests_total{phase="address_check",outcome="success"} 42
+sanctions_oracle_requests_total{phase="denylist_write",outcome="success"} 3
+# HELP sanctions_oracle_duration_ms Histogram of phase durations (ms)
+# TYPE sanctions_oracle_duration_ms histogram
+sanctions_oracle_duration_ms_bucket{phase="address_check",le="100"} 40
+...
+```
 
 ## Running multiple providers with `ProviderRegistry`
 
@@ -148,32 +299,32 @@ fill in the `sanctions-oracle` variables before running a live sync:
 | `STELLAR_RPC_URL` | `--rpc-url` | Soroban RPC endpoint |
 | `STELLAR_NETWORK_PASSPHRASE` | `--network-passphrase` | Must match the network the RPC endpoint serves |
 | `DENYLIST_GATE_CONTRACT_ID` | `--contract-id` | Deployed `denylist-gate` contract to write flagged addresses into |
-| `SANCTIONS_SOURCE_SECRET` | `--secret-key` | Signing keypair that funds and signs denylist transactions |
+| `SANCTIONS_ORACLE_SECRET_KEY` | `--secret-key` | Signing keypair that funds and signs denylist transactions (preferred over the CLI flag, which is visible in shell history) |
 
 See the comments in `.env.example` for allowed values and testnet guidance.
 
 Dry-run mode (`--dry-run`) does not require `DENYLIST_GATE_CONTRACT_ID` or
 `SANCTIONS_SOURCE_SECRET` — it only logs planned calls without touching the network.
 
-## End-to-end example: custom provider with syncSanctionsToDenylist
+## End-to-end example: RestSanctionsProvider with syncSanctionsToDenylist
 
-This example shows how to wire a custom `SanctionsProvider` with
-`syncSanctionsToDenylist` to check a list of addresses and submit them to
-a denylist contract:
+This example shows how to wire the built-in `RestSanctionsProvider`
+with `syncSanctionsToDenylist` to check a list of addresses against
+a watchlist REST API and submit flagged ones to a denylist contract:
 
 ```ts
-import { syncSanctionsToDenylist, createRpcDenylistWriter, SanctionsProvider } from 'sanctions-oracle';
+import {
+  RestSanctionsProvider,
+  syncSanctionsToDenylist,
+  createRpcDenylistWriter,
+} from 'sanctions-oracle';
 import { Keypair } from '@stellar/stellar-sdk';
 
-// 1. Implement your custom SanctionsProvider
-// (For a realistic REST-backed example, see the @example block in src/SanctionsProvider.ts)
-class MyCustomProvider implements SanctionsProvider {
-  async checkAddress(address: string) {
-    // Your watchlist logic here
-    const flagged = await myWatchlistApi.lookup(address);
-    return { flagged: Boolean(flagged), source: 'my-watchlist-api' };
-  }
-}
+// 1. Create a REST-backed provider
+const provider = new RestSanctionsProvider({
+  apiBaseUrl: 'https://api.watchlist-provider.com',
+  apiKey: process.env.WATCHLIST_API_KEY!,
+});
 
 // 2. Create a writer that submits to your denylist contract
 const writer = createRpcDenylistWriter({
@@ -185,7 +336,7 @@ const writer = createRpcDenylistWriter({
 
 // 3. Sync: check addresses and write flagged ones to denylist
 const result = await syncSanctionsToDenylist({
-  provider: new MyCustomProvider(),
+  provider,
   addresses: ['GABC...', 'GDEF...'],
   writer,
   dryRun: false,

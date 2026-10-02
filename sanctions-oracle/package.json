@@ -24,6 +24,7 @@
     "@compliance-adapters/backoff": "*",
     "@compliance-adapters/logger": "*",
     "@compliance-adapters/metrics": "*",
+    "@compliance-adapters/shared": "*",
     "@compliance-adapters/tracing-types": "*"
   },
   "devDependencies": {

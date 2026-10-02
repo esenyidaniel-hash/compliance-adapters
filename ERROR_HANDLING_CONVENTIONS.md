@@ -28,17 +28,15 @@ export interface VerifyResult {
 ```
 
 **Behavior**:
-- All public functions (`verifyChallenge`, `generateChallenge`) return result objects
-- Errors are caught internally and returned in the `error` field
-- Functions never throw; validation failures are indicated via `valid: false`
-- Middleware translates result objects to HTTP responses (401 status with error reason)
+- `verifyChallenge` returns a result object; errors are caught internally and returned in the `error` field; it never throws
+- `generateChallenge` returns a `GeneratedChallenge` object on success; it **throws `InvalidClientAddressError`** when `clientAddress` fails Ed25519 public-key validation — it does not return a result object with a `valid` field
+- Middleware translates `verifyChallenge` result objects to HTTP responses (401 status with error reason)
 
 **Consumer Expectations**:
-- Check `result.valid` before using `result.address`
-- Inspect `result.error` for validation failure details
-- No try/catch needed for library functions
+- For `verifyChallenge`: check `result.valid` before using `result.address`; inspect `result.error` for validation failure details; no try/catch needed
+- For `generateChallenge`: wrap calls in try/catch and handle `InvalidClientAddressError` for invalid input; on success, use the returned `GeneratedChallenge` directly
 
-**Example**:
+**Example (verifyChallenge — result object, never throws)**:
 ```typescript
 const result = verifyChallenge(signedXDR, options);
 if (!result.valid) {
@@ -46,6 +44,23 @@ if (!result.valid) {
   return;
 }
 console.log('Authenticated as:', result.address);
+```
+
+**Example (generateChallenge — throws on invalid input)**:
+```typescript
+import { generateChallenge, InvalidClientAddressError } from '@compliance-adapters/sep10-auth';
+
+try {
+  const challenge = generateChallenge(clientAddress, serverKeypair, options);
+  // On success: challenge.transactionXDR, challenge.networkPassphrase, challenge.expiresAt
+  sendToClient(challenge.transactionXDR);
+} catch (err) {
+  if (err instanceof InvalidClientAddressError) {
+    // clientAddress failed Ed25519 public-key validation
+    return res.status(400).json({ error: err.message });
+  }
+  throw err; // re-throw unexpected errors
+}
 ```
 
 ### sanctions-oracle
@@ -203,7 +218,8 @@ two packages need a shared machine-readable error contract in practice.
 
 | Package | Primary Pattern | Throws? | Consumer Action |
 |---------|----------------|---------|-----------------|
-| sep10-auth | Result objects | No | Check `valid` field |
+| sep10-auth (`verifyChallenge`) | Result objects | No | Check `valid` field |
+| sep10-auth (`generateChallenge`) | Returns `GeneratedChallenge` or throws | Yes (`InvalidClientAddressError`) | Use try/catch for invalid input |
 | sanctions-oracle (CLI) | Exit codes | No (caught) | Check `process.exitCode` |
 | sanctions-oracle (lib) | Throws | Yes | Use try/catch |
 | horizon-listener | Logs + throws | Context-dependent | Catch `start()`, log `onEvent` errors |

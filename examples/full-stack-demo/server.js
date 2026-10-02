@@ -8,6 +8,7 @@
  *                       in-memory token revocation store
  *   • sanctions-oracle — ProviderRegistry (fan-out across multiple providers)
  *                        + CsvSanctionsProvider + MockSanctionsProvider
+ *                        + RestSanctionsProvider
  *   • horizon-listener — polling Soroban RPC for contract events, forwarding
  *                        to a webhook
  *   • prom-client      — Prometheus metrics exposed on GET /metrics for both

@@ -69,7 +69,9 @@ export interface RpcEventSourceOptions {
   contractIds: string[];
   // Soroban RPC requires a starting ledger for the very first (cursor-less)
   // call; callers should pass a recent ledger they know is within the RPC's
-  // retention window. Left undefined, the RPC call will surface its own error.
+  // retention window (commonly ~24h / 17,280 ledgers). Left undefined, the
+  // first cursor-less getEvents call throws a descriptive error rather than
+  // falling back to ledger 0, which real RPC nodes reject.
   startLedger?: number;
   // Optional timeout in milliseconds for the RPC getEvents call.
   // If the call takes longer than this, it will be rejected.
@@ -92,6 +94,11 @@ export class RpcEventSource implements EventSource {
   private server: rpc.Server | undefined;
 
   constructor(options: RpcEventSourceOptions) {
+    if (options.contractIds.length === 0) {
+      throw new Error(
+        'horizon-listener: RpcEventSource requires at least one contract ID (contractIds array cannot be empty)',
+      );
+    }
     this.options = options;
   }
 
@@ -107,6 +114,14 @@ export class RpcEventSource implements EventSource {
   async getEvents(
     cursor: string | undefined,
   ): Promise<{ events: RawContractEvent[]; nextCursor: string }> {
+    if (!cursor && this.options.startLedger == null) {
+      throw new Error(
+        'horizon-listener: RpcEventSource requires `startLedger` for the first cursor-less ' +
+          "getEvents call. Pass a recent ledger within the RPC node's event retention window " +
+          '(commonly ~24h / 17,280 ledgers); see the horizon-listener README.',
+      );
+    }
+
     const server = this.getServer();
 
     const request = (
@@ -116,7 +131,7 @@ export class RpcEventSource implements EventSource {
             filters: [{ type: 'contract', contractIds: this.options.contractIds }],
           }
         : {
-            startLedger: this.options.startLedger ?? 0,
+            startLedger: this.options.startLedger,
             filters: [{ type: 'contract', contractIds: this.options.contractIds }],
           }
     ) as GetEventsRequest;

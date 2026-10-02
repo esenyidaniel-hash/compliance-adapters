@@ -18,5 +18,17 @@
 # Shared logger package
 /logger/ @MooreTheAnalyst @akprinciple @Lynndabel
 
+# Shared tracing-types package
+/tracing-types/ @MooreTheAnalyst @akprinciple @Lynndabel
+
+# Shared backoff package
+/backoff/ @MooreTheAnalyst @akprinciple @Lynndabel
+
+# Shared metrics package
+/metrics/ @MooreTheAnalyst @akprinciple @Lynndabel
+
+# Shared tracing package
+/tracing/ @MooreTheAnalyst @akprinciple @Lynndabel
+
 # GitHub configuration
 /.github/ @MooreTheAnalyst @akprinciple @Lynndabel

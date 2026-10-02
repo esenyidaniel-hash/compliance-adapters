@@ -11,13 +11,17 @@
     "logger",
     "shared",
     "tracing-types",
-    "backoff",
     "metrics",
     "tracing",
     "sep10-auth",
     "sanctions-oracle",
     "horizon-listener",
-    "examples/full-stack-demo"
+    "examples/full-stack-demo",
+    "examples/sep10-sanctions-gate",
+    "e2e-tests",
+    "backoff",
+    "metrics",
+    "tracing"
   ],
   "engines": {
     "node": ">=20.0.0",
@@ -35,6 +39,8 @@
     "test:e2e:test-only": "npm run test --workspace=e2e-tests",
     "test:e2e": "npm run test:e2e:start && npm run test:e2e:test-only ; npm run test:e2e:stop",
     "test:e2e:ci": "npm run test:e2e:start && npm run test:e2e:test-only ; docker-compose -f e2e-tests/docker-compose.yml down -v || true",
+    "test:integration:horizon-listener": "npm run test:e2e:start && npm run test:integration:horizon-listener --workspace=e2e-tests ; npm run test:e2e:stop",
+    "test:integration:horizon-listener:ci": "npm run test:e2e:start && npm run test:integration:horizon-listener --workspace=e2e-tests ; docker-compose -f e2e-tests/docker-compose.yml down -v || true",
     "lint": "eslint sep10-auth/src sanctions-oracle/src horizon-listener/src tracing-types/src examples/full-stack-demo/server.js --ext .ts,.js",
     "check:license": "node scripts/check-license-headers.js",
     "check:changelog": "node scripts/check-root-changelog.js",

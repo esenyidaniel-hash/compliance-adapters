@@ -12,6 +12,9 @@ const TARGET_DIRS = [
   'sep10-auth/src',
   'sanctions-oracle/src',
   'horizon-listener/src',
+  'backoff/src',
+  'metrics/src',
+  'tracing/src',
 ];
 
 const REQUIRED_HEADER_PATTERNS = [

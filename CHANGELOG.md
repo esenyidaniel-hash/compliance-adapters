@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **sep10-auth** — rate limiting middleware for challenge/verify endpoints, session revocation
   via `RevocationStore`, and `client_domain` verification support.
 - **sanctions-oracle** — `ProviderRegistry` for falling back across multiple sanctions data
-  sources, `CsvSanctionsProvider` for CSV-backed watchlists, `RateLimitedSanctionsProvider`
+  sources, `CsvSanctionsProvider` for CSV-backed watchlists, `RestSanctionsProvider`
+  for REST-backed watchlist API calls, `RateLimitedSanctionsProvider`
   wrapper, `withRetry` retry-with-backoff helper, and metrics/tracing instrumentation around
   sync runs.
 - **horizon-listener** — HMAC webhook request signing, stream/poll event source modes, and
