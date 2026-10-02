@@ -1,7 +1,7 @@
 ///<reference types="jest" />
 import { Keypair, Networks, Transaction } from '@stellar/stellar-sdk';
 import { generateChallenge } from '../src/challenge';
-import { verifyChallenge } from '../src/verify';
+import { verifyChallenge, VerifyErrorCode } from '../src/verify';
 
 const homeDomain = 'localhost:3000';
 
@@ -57,6 +57,7 @@ describe('verifyChallenge', () => {
     expect(result.valid).toBe(true);
     expect(result.address).toBe(clientKeypair.publicKey());
     expect(result.error).toBeUndefined();
+    expect(result.errorCode).toBeUndefined();
   });
 
   it('accepts a challenge when homeDomains is an array containing the challenge home domain', () => {
@@ -81,6 +82,7 @@ describe('verifyChallenge', () => {
     expect(result.valid).toBe(true);
     expect(result.address).toBe(clientKeypair.publicKey());
     expect(result.error).toBeUndefined();
+    expect(result.errorCode).toBeUndefined();
   });
 
   it('rejects a challenge whose timebounds have expired', () => {
@@ -273,5 +275,231 @@ describe('verifyChallenge', () => {
     expect(result.valid).toBe(false);
     expect(result.error).toBeDefined();
     // The error message should help debugging by indicating which domain(s) were tried
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #37 — Typed error codes
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('verifyChallenge — typed error codes (#37)', () => {
+  it('returns no errorCode on success', () => {
+    const serverKeypair = Keypair.random();
+    const clientKeypair = Keypair.random();
+    const challenge = generateChallenge(clientKeypair.publicKey(), serverKeypair, {
+      homeDomain,
+      webAuthDomain: homeDomain,
+      networkPassphrase: Networks.TESTNET,
+    });
+    const signedXDR = signAsClient(challenge.transactionXDR, Networks.TESTNET, clientKeypair);
+
+    const result = verifyChallenge(signedXDR, {
+      serverAccountId: serverKeypair.publicKey(),
+      networkPassphrase: Networks.TESTNET,
+      homeDomains: homeDomain,
+      webAuthDomain: homeDomain,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.errorCode).toBeUndefined();
+  });
+
+  it('returns INVALID_SERVER_ACCOUNT_ID for a bad serverAccountId', () => {
+    const result = verifyChallenge('some-xdr', {
+      serverAccountId: 'not-a-valid-key',
+      homeDomains: homeDomain,
+      webAuthDomain: homeDomain,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errorCode).toBe<VerifyErrorCode>('INVALID_SERVER_ACCOUNT_ID');
+    expect(result.error).toMatch(/serverAccountId/i);
+  });
+
+  it('returns INVALID_OPTIONS for a non-bare homeDomain', () => {
+    const serverKeypair = Keypair.random();
+    const result = verifyChallenge('some-xdr', {
+      serverAccountId: serverKeypair.publicKey(),
+      homeDomains: 'https://example.com',
+      webAuthDomain: homeDomain,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errorCode).toBe<VerifyErrorCode>('INVALID_OPTIONS');
+  });
+
+  it('returns INVALID_OPTIONS for a non-bare webAuthDomain', () => {
+    const serverKeypair = Keypair.random();
+    const result = verifyChallenge('some-xdr', {
+      serverAccountId: serverKeypair.publicKey(),
+      homeDomains: homeDomain,
+      webAuthDomain: 'http://bad-domain.com/path',
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errorCode).toBe<VerifyErrorCode>('INVALID_OPTIONS');
+  });
+
+  it('returns CHALLENGE_EXPIRED for an expired challenge', () => {
+    jest.useFakeTimers();
+    try {
+      const serverKeypair = Keypair.random();
+      const clientKeypair = Keypair.random();
+      const challenge = generateChallenge(clientKeypair.publicKey(), serverKeypair, {
+        homeDomain,
+        webAuthDomain: homeDomain,
+        networkPassphrase: Networks.TESTNET,
+        timeoutSeconds: 1,
+      });
+      const signedXDR = signAsClient(challenge.transactionXDR, Networks.TESTNET, clientKeypair);
+      jest.advanceTimersByTime((1 + 301) * 1000);
+
+      const result = verifyChallenge(signedXDR, {
+        serverAccountId: serverKeypair.publicKey(),
+        networkPassphrase: Networks.TESTNET,
+        homeDomains: homeDomain,
+        webAuthDomain: homeDomain,
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.errorCode).toBe<VerifyErrorCode>('CHALLENGE_EXPIRED');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('returns WRONG_SIGNER when the client never signed', () => {
+    const serverKeypair = Keypair.random();
+    const clientKeypair = Keypair.random();
+    const challenge = generateChallenge(clientKeypair.publicKey(), serverKeypair, {
+      homeDomain,
+      webAuthDomain: homeDomain,
+      networkPassphrase: Networks.TESTNET,
+    });
+
+    // Pass the unsigned challenge (only server-signed)
+    const result = verifyChallenge(challenge.transactionXDR, {
+      serverAccountId: serverKeypair.publicKey(),
+      networkPassphrase: Networks.TESTNET,
+      homeDomains: homeDomain,
+      webAuthDomain: homeDomain,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errorCode).toBeDefined();
+    // WRONG_SIGNER or INVALID_CHALLENGE — both are acceptable for a missing client signature
+    expect(['WRONG_SIGNER', 'INVALID_CHALLENGE']).toContain(result.errorCode);
+  });
+
+  it('returns WRONG_DOMAIN when all webAuthDomain candidates fail', () => {
+    const serverKeypair = Keypair.random();
+    const clientKeypair = Keypair.random();
+    const challenge = generateChallenge(clientKeypair.publicKey(), serverKeypair, {
+      homeDomain,
+      webAuthDomain: homeDomain,
+      networkPassphrase: Networks.TESTNET,
+    });
+    const signedXDR = signAsClient(challenge.transactionXDR, Networks.TESTNET, clientKeypair);
+
+    const result = verifyChallenge(signedXDR, {
+      serverAccountId: serverKeypair.publicKey(),
+      networkPassphrase: Networks.TESTNET,
+      homeDomains: homeDomain,
+      webAuthDomain: 'wrong-domain.com',
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errorCode).toBe<VerifyErrorCode>('WRONG_DOMAIN');
+  });
+
+  it('returns a defined errorCode whenever valid is false', () => {
+    // Property: every failure result must carry an errorCode
+    const serverKeypair = Keypair.random();
+    const failureCases = [
+      // invalid serverAccountId
+      verifyChallenge('garbage', { serverAccountId: 'bad', homeDomains: homeDomain, webAuthDomain: homeDomain }),
+      // invalid domain format
+      verifyChallenge('garbage', { serverAccountId: serverKeypair.publicKey(), homeDomains: 'https://bad.com', webAuthDomain: homeDomain }),
+      // garbage XDR
+      verifyChallenge('notbase64atall!!!', { serverAccountId: serverKeypair.publicKey(), homeDomains: homeDomain, webAuthDomain: homeDomain }),
+    ];
+
+    for (const result of failureCases) {
+      expect(result.valid).toBe(false);
+      expect(result.errorCode).toBeDefined();
+      expect(typeof result.errorCode).toBe('string');
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #40 — expectedMemo verification
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('verifyChallenge — expectedMemo (#40)', () => {
+  const serverKeypair = Keypair.random();
+  const clientKeypair = Keypair.random();
+
+  function buildSigned(memo?: string): string {
+    const challenge = generateChallenge(clientKeypair.publicKey(), serverKeypair, {
+      homeDomain,
+      webAuthDomain: homeDomain,
+      networkPassphrase: Networks.TESTNET,
+      ...(memo !== undefined ? { memo } : {}),
+    });
+    return signAsClient(challenge.transactionXDR, Networks.TESTNET, clientKeypair);
+  }
+
+  const baseOpts = {
+    serverAccountId: serverKeypair.publicKey(),
+    networkPassphrase: Networks.TESTNET,
+    homeDomains: homeDomain,
+    webAuthDomain: homeDomain,
+  };
+
+  it('succeeds when expectedMemo matches the transaction memo', () => {
+    const signedXDR = buildSigned('42');
+    const result = verifyChallenge(signedXDR, { ...baseOpts, expectedMemo: '42' });
+    expect(result.valid).toBe(true);
+    expect(result.errorCode).toBeUndefined();
+  });
+
+  it('fails with MEMO_MISMATCH when expectedMemo does not match transaction memo', () => {
+    const signedXDR = buildSigned('42');
+    const result = verifyChallenge(signedXDR, { ...baseOpts, expectedMemo: '999' });
+    expect(result.valid).toBe(false);
+    expect(result.errorCode).toBe<VerifyErrorCode>('MEMO_MISMATCH');
+    expect(result.error).toMatch(/memo mismatch/i);
+    expect(result.error).toContain('999');
+  });
+
+  it('fails with MEMO_MISMATCH when expectedMemo is provided but transaction has no memo', () => {
+    const signedXDR = buildSigned(undefined); // no memo on challenge
+    const result = verifyChallenge(signedXDR, { ...baseOpts, expectedMemo: '42' });
+    expect(result.valid).toBe(false);
+    expect(result.errorCode).toBe<VerifyErrorCode>('MEMO_MISMATCH');
+    expect(result.error).toMatch(/memo mismatch/i);
+  });
+
+  it('succeeds without checking memo when expectedMemo is not provided', () => {
+    const signedXDR = buildSigned('99');
+    // No expectedMemo — existing behaviour must be unchanged
+    const result = verifyChallenge(signedXDR, baseOpts);
+    expect(result.valid).toBe(true);
+    expect(result.errorCode).toBeUndefined();
+  });
+
+  it('succeeds without checking memo when challenge has no memo and expectedMemo is absent', () => {
+    const signedXDR = buildSigned(undefined);
+    const result = verifyChallenge(signedXDR, baseOpts);
+    expect(result.valid).toBe(true);
+    expect(result.errorCode).toBeUndefined();
+  });
+
+  it('preserves human-readable error message on MEMO_MISMATCH', () => {
+    const signedXDR = buildSigned('100');
+    const result = verifyChallenge(signedXDR, { ...baseOpts, expectedMemo: '200' });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('"200"');
   });
 });

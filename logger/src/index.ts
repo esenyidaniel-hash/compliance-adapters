@@ -41,3 +41,54 @@ export const noopLogger: Logger = {
   warn: () => undefined,
   error: () => undefined,
 };
+
+/**
+ * The four log levels supported by {@link createLeveledLogger}, ordered from
+ * least to most severe.
+ */
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+/** Numeric rank used to compare log levels. Higher = more severe. */
+const LOG_LEVEL_RANK: Record<LogLevel, number> = {
+  debug: 0,
+  info: 1,
+  warn: 2,
+  error: 3,
+};
+
+/**
+ * Wraps a base {@link Logger} and silences any call whose level is below
+ * `minLevel`.  Calls at or above `minLevel` are forwarded to the base logger
+ * unchanged.
+ *
+ * This fills the gap between {@link consoleLogger} (emits everything) and
+ * {@link noopLogger} (emits nothing), letting operators configure a minimum
+ * severity without having to write a custom Logger object from scratch.
+ *
+ * @example
+ * ```ts
+ * // Emit info, warn, and error; suppress debug in production.
+ * const logger = createLeveledLogger(consoleLogger, process.env.LOG_LEVEL ?? 'info');
+ * ```
+ *
+ * @param base     The underlying logger to delegate to when the level passes.
+ * @param minLevel The minimum level to emit.  Calls below this level are no-ops.
+ * @returns        A new Logger instance; the `base` logger is never mutated.
+ */
+export function createLeveledLogger(base: Logger, minLevel: LogLevel): Logger {
+  const minRank = LOG_LEVEL_RANK[minLevel];
+  return {
+    debug: (...args: unknown[]) => {
+      if (LOG_LEVEL_RANK.debug >= minRank) base.debug(...args);
+    },
+    info: (...args: unknown[]) => {
+      if (LOG_LEVEL_RANK.info >= minRank) base.info(...args);
+    },
+    warn: (...args: unknown[]) => {
+      if (LOG_LEVEL_RANK.warn >= minRank) base.warn(...args);
+    },
+    error: (...args: unknown[]) => {
+      if (LOG_LEVEL_RANK.error >= minRank) base.error(...args);
+    },
+  };
+}

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { RestSanctionsProvider } from '../examples/restProvider';
+import { RestSanctionsProvider } from '../src/restProvider';
 
 // ---------------------------------------------------------------------------
 // Helpers

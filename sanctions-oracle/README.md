@@ -20,10 +20,13 @@ by invoking its `add_to_denylist(address)` contract function.
 
 - Defines a generic `SanctionsProvider` interface so any external
   sanctions/watchlist data source can be plugged into the sync flow.
-- Ships two reference implementations for local development and tests only:
-  `MockSanctionsProvider`, backed by a small static in-file list, and
-  `CsvSanctionsProvider`, which loads flagged addresses from a CSV file
-  (see [Loading a watchlist from CSV](#loading-a-watchlist-from-csv-csvsanctionsprovider)).
+- Ships three reference implementations: `MockSanctionsProvider`,
+  backed by a small static in-file list (development/testing only);
+  `CsvSanctionsProvider`, which loads flagged addresses from a CSV
+  file (see [Loading a watchlist from CSV](#loading-a-watchlist-from-csv-csvsanctionsprovider));
+  and `RestSanctionsProvider`, a REST-backed provider that calls a
+  configurable HTTP endpoint per address (see
+  [Using RestSanctionsProvider](#using-restsanctionsprovider)).
 - Provides `syncSanctionsToDenylist`, a function that checks a list of
   candidate addresses against a `SanctionsProvider` and, for any flagged
   addresses, calls `add_to_denylist(address)` on a Soroban `denylist-gate`
@@ -32,8 +35,11 @@ by invoking its `add_to_denylist(address)` contract function.
   `DenylistWriter` interface, so the sync logic can be unit tested with a
   fake writer, with no live network required.
 
-This package does **not** implement real sanctions data fetching — that is
-tracked as a separate future issue.
+This package ships a reference `RestSanctionsProvider` that calls a
+configurable HTTP endpoint per address. For production use,
+replace it with a provider backed by your real sanctions data
+source (or wrap `RestSanctionsProvider` with
+`RateLimitedSanctionsProvider` for automatic back-off on 429s).
 
 Provider calls made during a sync (`provider.checkAddress`) are wrapped in
 a retry-with-backoff helper (`withRetry`, see `src/retry.ts`): on failure
@@ -75,7 +81,7 @@ export interface SanctionsProvider {
 }
 ```
 
-Implement this to plug in a real data source. For a detailed, copy-pasteable example of a REST-backed provider, see the `SanctionsProvider` JSDoc `@example` block in [`src/SanctionsProvider.ts`](./src/SanctionsProvider.ts) — it includes error handling and can serve as a template for integrating your own watchlist API.
+Implement this to plug in a real data source. For a production-ready starting point, use the built-in {@link RestSanctionsProvider} (see its constructor options for `apiBaseUrl`, `apiKey`, `timeoutMs`, and `fetchImpl`). You can also write a custom implementation — see the {@link SanctionsProvider} interface JSDoc for a minimal example.
 
 A minimal implementation:
 
@@ -93,6 +99,42 @@ class MyProvider implements SanctionsProvider {
 Anything conforming to this interface — a REST client, a cache in front of
 multiple upstream lists, a local CSV loader — can be passed to
 `syncSanctionsToDenylist` in place of `MockSanctionsProvider`.
+
+## Using `RestSanctionsProvider`
+
+`RestSanctionsProvider` is a reference REST-backed implementation of
+`SanctionsProvider` that calls a configurable HTTP endpoint for each
+address. It is suitable as a closer-to-production starting point than
+`MockSanctionsProvider`.
+
+```ts
+import { RestSanctionsProvider, syncSanctionsToDenylist } from 'sanctions-oracle';
+
+const provider = new RestSanctionsProvider({
+  apiBaseUrl: 'https://api.watchlist-provider.com',
+  apiKey: process.env.WATCHLIST_API_KEY!,
+});
+
+await syncSanctionsToDenylist({ provider, addresses, writer });
+```
+
+| Option | Description |
+|---|---|
+| `apiBaseUrl` | Base URL of the watchlist REST API (e.g. `https://api.watchlist-provider.com`). A trailing slash is stripped automatically. |
+| `apiKey` | API key sent as a `Bearer` token in the `Authorization` header. |
+| `timeoutMs` | Request timeout in milliseconds. Defaults to `5000`. Implemented via `AbortController`. |
+| `fetchImpl` | Injectable `fetch` implementation. Defaults to the global `fetch`. Override in tests to avoid real network I/O. |
+
+The provider issues a `GET <apiBaseUrl>/check?address=<address>` request and maps the JSON response to `{ flagged, source }`:
+
+- `flagged` — taken from `response.is_flagged`
+- `source` — the `response.lists` array joined by commas, or
+  `"external-watchlist-api"` when the list is empty
+
+On non-2xx responses the provider throws an error including the HTTP
+status and the address. On network failures or timeouts it throws a
+descriptive error message that `syncSanctionsToDenylist`'s retry
+logic (see [Resuming an interrupted sync](#resuming-an-interrupted-sync)) can handle.
 
 ## Cache and concurrency behavior
 
@@ -155,25 +197,25 @@ See the comments in `.env.example` for allowed values and testnet guidance.
 Dry-run mode (`--dry-run`) does not require `DENYLIST_GATE_CONTRACT_ID` or
 `SANCTIONS_SOURCE_SECRET` — it only logs planned calls without touching the network.
 
-## End-to-end example: custom provider with syncSanctionsToDenylist
+## End-to-end example: RestSanctionsProvider with syncSanctionsToDenylist
 
-This example shows how to wire a custom `SanctionsProvider` with
-`syncSanctionsToDenylist` to check a list of addresses and submit them to
-a denylist contract:
+This example shows how to wire the built-in `RestSanctionsProvider`
+with `syncSanctionsToDenylist` to check a list of addresses against
+a watchlist REST API and submit flagged ones to a denylist contract:
 
 ```ts
-import { syncSanctionsToDenylist, createRpcDenylistWriter, SanctionsProvider } from 'sanctions-oracle';
+import {
+  RestSanctionsProvider,
+  syncSanctionsToDenylist,
+  createRpcDenylistWriter,
+} from 'sanctions-oracle';
 import { Keypair } from '@stellar/stellar-sdk';
 
-// 1. Implement your custom SanctionsProvider
-// (For a realistic REST-backed example, see the @example block in src/SanctionsProvider.ts)
-class MyCustomProvider implements SanctionsProvider {
-  async checkAddress(address: string) {
-    // Your watchlist logic here
-    const flagged = await myWatchlistApi.lookup(address);
-    return { flagged: Boolean(flagged), source: 'my-watchlist-api' };
-  }
-}
+// 1. Create a REST-backed provider
+const provider = new RestSanctionsProvider({
+  apiBaseUrl: 'https://api.watchlist-provider.com',
+  apiKey: process.env.WATCHLIST_API_KEY!,
+});
 
 // 2. Create a writer that submits to your denylist contract
 const writer = createRpcDenylistWriter({
@@ -185,7 +227,7 @@ const writer = createRpcDenylistWriter({
 
 // 3. Sync: check addresses and write flagged ones to denylist
 const result = await syncSanctionsToDenylist({
-  provider: new MyCustomProvider(),
+  provider,
   addresses: ['GABC...', 'GDEF...'],
   writer,
   dryRun: false,

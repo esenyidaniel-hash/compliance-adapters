@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { Keypair, Networks, StrKey, WebAuth } from '@stellar/stellar-sdk';
+import { Keypair, Networks, WebAuth } from '@stellar/stellar-sdk';
 import { type Logger, noopLogger } from '@compliance-adapters/logger';
+import { isValidStellarAddress } from '@compliance-adapters/shared';
 
 export class InvalidClientAddressError extends Error {
   constructor(address: string) {
@@ -26,6 +27,15 @@ export class InvalidDomainError extends Error {
       `sep10-auth: ${name} must be a bare domain (no scheme, path, or whitespace), got "${value}"`,
     );
     this.name = 'InvalidDomainError';
+  }
+}
+
+export class ServerKeypairCannotSignError extends Error {
+  constructor() {
+    super(
+      'sep10-auth: serverKeypair cannot sign — provide a keypair with a secret key, not a public-key-only keypair',
+    );
+    this.name = 'ServerKeypairCannotSignError';
   }
 }
 
@@ -92,7 +102,7 @@ export function generateChallenge(
     throw new ServerKeypairCannotSignError();
   }
 
-  if (!StrKey.isValidEd25519PublicKey(clientAddress)) {
+  if (!isValidStellarAddress(clientAddress)) {
     throw new InvalidClientAddressError(clientAddress);
   }
 
@@ -104,6 +114,7 @@ export function generateChallenge(
     logger.warn(
       `sep10-auth: generateChallenge is using the default homeDomain "${DEFAULT_HOME_DOMAIN}" ` +
         'in a production environment. Pass an explicit `homeDomain` option matching your deployed domain.',
+      { homeDomain: DEFAULT_HOME_DOMAIN },
     );
   }
   assertBareDomain('homeDomain', homeDomain);

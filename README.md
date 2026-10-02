@@ -164,7 +164,7 @@ A runnable example app lives at `examples/full-stack-demo`. It demonstrates the 
 
 - `sep10-auth` protects a `/private` route with SEP-10 bearer token verification
 - `horizon-listener` polls Soroban RPC contract events and forwards them to an internal webhook
-- `sanctions-oracle` sync logic is exposed via a `/sync` endpoint using the mock provider
+- `sanctions-oracle` sync logic is exposed via a `/sanctions/sync` endpoint using the mock provider
 
 To run it:
 
@@ -176,12 +176,17 @@ npm install
 npm start
 ```
 
-The demo starts an Express server on `http://localhost:3000` and exposes:
+The demo starts an Express server on `http://localhost:3001` and exposes:
 
-- `GET /public`
-- `GET /private`
-- `GET /sync`
-- `GET /challenge`
+- `GET  /health`                   — liveness check
+- `GET  /auth?account=G…`          — issue SEP-10 challenge
+- `POST /auth`                     — verify signed challenge
+- `POST /auth/revoke`              — revoke a bearer token
+- `GET  /sanctions/check?address=` — check an address via ProviderRegistry
+- `POST /sanctions/sync`           — run a full sanctions sync
+- `POST /admin/listener/start`     — start Horizon event listener (requires `X-Admin-Token`)
+- `POST /admin/listener/stop`      — stop Horizon event listener (requires `X-Admin-Token`)
+- `GET  /metrics`                  — Prometheus metrics
 
 You can configure runtime values with environment variables such as `SERVER_ACCOUNT_ID`, `RPC_URL`, and `CONTRACT_ID`. See the root [`.env.example`](./.env.example) for the full list of documented variables across all packages.
 

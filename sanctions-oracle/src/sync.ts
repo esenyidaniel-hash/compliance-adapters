@@ -7,12 +7,12 @@ import * as fs from 'fs';
 import {
   Contract,
   Keypair,
-  StrKey,
   TransactionBuilder,
   BASE_FEE,
   nativeToScVal,
   rpc,
 } from '@stellar/stellar-sdk';
+import { isValidStellarAddress } from '@compliance-adapters/shared';
 import { type Logger, noopLogger, consoleLogger } from '@compliance-adapters/logger';
 export type { Logger } from '@compliance-adapters/logger';
 import { SanctionsProvider } from './SanctionsProvider';
@@ -375,7 +375,7 @@ export async function syncSanctionsToDenylist(options: SyncOptions): Promise<Syn
   const invalid: string[] = [];
   const validAddresses: string[] = [];
   for (const address of uniqueAddresses) {
-    if (StrKey.isValidEd25519PublicKey(address)) {
+    if (isValidStellarAddress(address)) {
       validAddresses.push(address);
     } else {
       invalid.push(address);

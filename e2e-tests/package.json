@@ -10,7 +10,8 @@
     "build": "tsc -p .",
     "test": "jest --runInBand",
     "test:only": "npm run test -- --testPathPattern=integration.test.ts",
-    "test:compatibility": "jest --runInBand --testPathPattern=compatibility.test.ts"
+    "test:compatibility": "jest --runInBand --testPathPattern=compatibility.test.ts",
+    "test:integration:horizon-listener": "jest --runInBand --testPathPattern=horizon-listener-integration.test.ts"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^16.0.1",

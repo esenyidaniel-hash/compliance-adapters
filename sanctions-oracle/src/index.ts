@@ -60,4 +60,6 @@ export {
   type TracingOptions,
 } from './tracing';
 export { RateLimitedSanctionsProvider, RateLimitOptions } from './rateLimitedProvider';
+export { RestSanctionsProvider } from './restProvider';
+export type { RestSanctionsProviderOptions } from './restProvider';
 export type { Logger } from '@compliance-adapters/logger';
